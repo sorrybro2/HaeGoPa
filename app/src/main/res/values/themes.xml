@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- UI 는 전부 Jetpack Compose. 창 배경만 차량용 다크 톤으로 지정 -->
-    <style name="Theme.Haegopa" parent="android:Theme.Material.NoActionBar">
+    <!-- UI 는 전부 Jetpack Compose. 창 배경만 시스템 주야간 모드에 맞춘다 (낮: 밝게 / 밤: values-night) -->
+    <style name="Theme.Haegopa" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/haegopa_background</item>
         <item name="android:statusBarColor">@color/haegopa_background</item>
         <item name="android:navigationBarColor">@color/haegopa_background</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

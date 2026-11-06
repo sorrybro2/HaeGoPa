@@ -27,6 +27,14 @@
     <!-- Pleos Vehicle SDK: 주행 시간(Odometer) -->
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
     <uses-permission android:name="pleos.car.permission.CAR_INFO" />
+    <!-- Pleos NaviHelper: 경로 탐색·경유지 주입(NAVI_ROUTE_SEARCH), 경로·현재 위치 조회(NAVI_ROUTE), 길안내 이벤트(NAVI_NOTIFY).
+         Pleos Connect 에뮬레이터에서 확인한 protectionLevel=normal → 설치 시 자동 허용 -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
+    <uses-permission android:name="pleos.car.permission.NAVI_NOTIFY" />
+    <!-- Pleos TextToSpeech / SpeechToText (normal) -->
+    <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
+    <uses-permission android:name="pleos.car.permission.STT_SERVICE" />
     <!-- 음성 응답(Pleos SpeechToText / Android SpeechRecognizer) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -39,6 +47,8 @@
         <package android:name="ai.pleos.playground.service.vehicle" />
         <package android:name="ai.pleos.playground.caas" />
         <package android:name="ai.pleos.playground.service.caas" />
+        <!-- Pleos 순정 내비 앱 ([내비에서 보기] 로 화면 전환) -->
+        <package android:name="ai.umos.maps.android.navigation.app" />
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
@@ -74,7 +84,7 @@
             </intent-filter>
 
             <!-- 주행 중 시스템이 앱을 차단하지 않도록 Distraction Optimized 선언.
-                 대신 주행 중 UI 축소(스크롤 잠금 · 1개 카드 · 음성 안내)는 앱이 직접 책임진다. -->
+                 대신 주행 중 UI 제한(큰 글씨 간편 목록 · 목록 21개 상한 · 상세/영상 잠금 · 음성 안내)은 앱이 직접 책임진다. -->
             <meta-data
                 android:name="distractionOptimized"
                 android:value="true" />

@@ -4,6 +4,7 @@ import com.haegopa.app.domain.model.DriveMode
 import com.haegopa.app.domain.model.GearPosition
 import com.haegopa.app.domain.model.GeoPoint
 import com.haegopa.app.domain.model.QuizQuestion
+import com.haegopa.app.domain.model.SearchRadius
 import com.haegopa.app.domain.model.SingAlongSong
 import com.haegopa.app.domain.model.Spot
 import com.haegopa.app.domain.model.SpotCategory
@@ -60,6 +61,13 @@ data class MainUiState(
     val feeds: Map<SpotCategory, FeedState> = SpotCategory.entries.associateWith { FeedState() },
     val origin: GeoPoint = GeoPoint.DEFAULT_MOCK_ORIGIN,
     val originLabel: String = "현재 위치 확인 중",
+    /** 차량(현재 위치) 기준 검색 반경 */
+    val radiusMeters: Int = SearchRadius.DEFAULT_METERS,
+    /** 마지막으로 직접 설정한 반경 (4번째 칩에 표시) */
+    val customRadiusMeters: Int? = null,
+    val radiusDialogOpen: Boolean = false,
+    /** 지도 핀용: 목록 페이징과 무관하게 현재 카테고리 · 반경 안의 스팟 전부 */
+    val mapSpots: List<Spot> = emptyList(),
     val speedKmh: Int = 0,
     val gear: GearPosition = GearPosition.UNKNOWN,
     val tripMinutes: Int = 0,

@@ -69,11 +69,17 @@ interface NaviHelperGateway : MockNaviHelper {
     /** NaviHelper.getCurrentLocationInfo() 결과. 알 수 없으면 null */
     val currentLocation: StateFlow<GeoPoint?>
 
+    /** 순정 내비가 알려 준 현재 위치 주소 (예: "수정구 시흥동"). 알 수 없으면 null */
+    val currentAddress: StateFlow<String?>
+
     /** 비동기 SDK 콜백(오류 등)을 사용자 메시지로 전달 */
     val events: SharedFlow<String>
 
     fun addWaypointDetailed(name: String, latitude: Double, longitude: Double): WaypointResult
     fun clearWaypoints()
+
+    /** 순정 내비 화면으로 전환 (Pleos 에서만 가능, 성공 여부 반환) */
+    fun openNavigationScreen(): Boolean = false
 
     override fun addWaypoint(name: String, latitude: Double, longitude: Double): Boolean =
         addWaypointDetailed(name, latitude, longitude).isSuccess

@@ -79,18 +79,22 @@ class PleosSpeechGateway(context: Context) : SpeechGateway {
     private fun initPleosTts() {
         try {
             val engine = PleosTextToSpeech(appContext, TtsMode.ON_DEVICE)
-            engine.addEventListener(object : TtsEventListener {
-                override fun onStart() = Unit
-                override fun onReady() = Unit
-                override fun onDone() = Unit
-                override fun onStop() = Unit
-                override fun onUpdatedRms(rms: Double) = Unit
-                override fun onError(errorType: TtsErrorType) {
-                    Log.w(TAG, "Pleos TTS error: $errorType")
-                }
-            })
+            // 주의: Pleos TTS 는 initialize() 성공 전에 addEventListener() 를 부르면 내부 엔진이 없어
+            // "lateinit property tts has not been initialized" 로 실패한다 (Pleos 에뮬레이터에서 확인) → 성공 콜백에서 등록
             engine.initialize(object : TtsInitListener {
                 override fun onSuccess() {
+                    runCatching {
+                        engine.addEventListener(object : TtsEventListener {
+                            override fun onStart() = Unit
+                            override fun onReady() = Unit
+                            override fun onDone() = Unit
+                            override fun onStop() = Unit
+                            override fun onUpdatedRms(rms: Double) = Unit
+                            override fun onError(errorType: TtsErrorType) {
+                                Log.w(TAG, "Pleos TTS error: $errorType")
+                            }
+                        })
+                    }.onFailure { Log.w(TAG, "Pleos TTS listener registration failed", it) }
                     runCatching { engine.setLocale(Locale.KOREA) }
                     pleosTtsReady = true
                     pleosTtsStatus.value = SdkStatus("Pleos TextToSpeech", SdkBackend.PLEOS, "ON_DEVICE · ko-KR")
