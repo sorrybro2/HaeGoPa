@@ -1,0 +1,18 @@
+# Gradle / Android Studio
+.gradle/
+build/
+/local.properties
+/.idea/
+*.iml
+.DS_Store
+/captures
+.externalNativeBuild
+.cxx
+.kotlin/
+
+# Release signing secrets (never commit)
+keystore.properties
+*.jks
+*.keystore
+
+# Note: apk/*.apk is intentionally NOT ignored — the competition asks for the APK inside the repo (apk/ folder).

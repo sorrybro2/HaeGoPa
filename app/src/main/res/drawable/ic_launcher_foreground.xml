@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 해고파 아이콘: 위치 핀 안에 먹(주황)·놀(보라)·쉬(청록) 세 점 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF6B4A"
+        android:pathData="M54,26C42.4,26 33,35.4 33,47C33,62.75 54,84 54,84C54,84 75,62.75 75,47C75,35.4 65.6,26 54,26Z" />
+    <path
+        android:fillColor="#141B26"
+        android:pathData="M41,47a13,13 0,1 0,26 0a13,13 0,1 0,-26 0Z" />
+    <path
+        android:fillColor="#FF8A3D"
+        android:pathData="M43.5,47a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0Z" />
+    <path
+        android:fillColor="#8B6CFF"
+        android:pathData="M50.5,47a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0Z" />
+    <path
+        android:fillColor="#2EC4B6"
+        android:pathData="M57.5,47a3.5,3.5 0,1 0,7 0a3.5,3.5 0,1 0,-7 0Z" />
+</vector>

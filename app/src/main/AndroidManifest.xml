@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Android Automotive OS(Pleos Connect) 대상 앱.
+         일반 폰/태블릿 AVD 시연도 허용하기 위해 required="false" (Pleos App Market 배포 시 true 로 전환 권장) -->
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.screen.portrait"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.screen.landscape"
+        android:required="false" />
+
+    <!-- AAOS 표준 차속(VHAL PERF_VEHICLE_SPEED) 구독 — 런타임 권한 -->
+    <uses-permission android:name="android.car.permission.CAR_SPEED" />
+    <!-- AAOS 표준 기어(VHAL GEAR_SELECTION) — Pleos Vehicle SDK 가 자체 기어 API 대신 사용을 권고 -->
+    <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
+    <!-- Pleos Vehicle SDK: 주행 시간(Odometer) -->
+    <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <uses-permission android:name="pleos.car.permission.CAR_INFO" />
+    <!-- 음성 응답(Pleos SpeechToText / Android SpeechRecognizer) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 11+ 패키지 가시성
+         · Pleos 시스템 서비스 존재 확인 (없으면 SDK 초기화를 건너뛰고 Mock 으로 동작)
+         · 폴백용 TTS 엔진 · 음성 인식 서비스 조회 -->
+    <queries>
+        <package android:name="ai.pleos.playground.service.navi" />
+        <package android:name="ai.pleos.playground.service.vehicle" />
+        <package android:name="ai.pleos.playground.caas" />
+        <package android:name="ai.pleos.playground.service.caas" />
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".HaegopaApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Haegopa"
+        tools:targetApi="35">
+
+        <!-- android.car 구현체는 차량 OS 에만 존재 → required=false 로 일반 AVD 설치·실행 허용 -->
+        <uses-library
+            android:name="android.car"
+            android:required="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|uiMode|keyboard|keyboardHidden|navigation"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 주행 중 시스템이 앱을 차단하지 않도록 Distraction Optimized 선언.
+                 대신 주행 중 UI 축소(스크롤 잠금 · 1개 카드 · 음성 안내)는 앱이 직접 책임진다. -->
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
+        </activity>
+    </application>
+</manifest>
