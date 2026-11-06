@@ -32,6 +32,8 @@ class MockNaviHelperImpl(
 
     override val currentLocation: StateFlow<GeoPoint?> = MutableStateFlow<GeoPoint?>(null).asStateFlow()
 
+    override val currentAddress: StateFlow<String?> = MutableStateFlow<String?>(null).asStateFlow()
+
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
     override val events: SharedFlow<String> = _events.asSharedFlow()
 
@@ -61,6 +63,19 @@ class MockNaviHelperImpl(
     @Synchronized
     override fun clearWaypoints() {
         _waypoints.value = _waypoints.value.filter { it.kind == WaypointKind.DESTINATION }
+    }
+
+    /** Pleos 순정 내비가 알려 준 실제 목적지·경유지로 통째로 맞춘다 (내비에서 직접 바꾼 경로도 해고파에 반영) */
+    @Synchronized
+    fun syncFromNavi(destination: Waypoint?, stops: List<Waypoint>) {
+        _waypoints.value = stops.take(maxWaypoints).mapIndexed { i, w -> w.copy(kind = WaypointKind.WAYPOINT, order = i + 1) } +
+            listOfNotNull(destination?.copy(kind = WaypointKind.DESTINATION, order = 0))
+    }
+
+    /** 길안내 종료 · 취소 · 도착 */
+    @Synchronized
+    fun clearAll() {
+        _waypoints.value = emptyList()
     }
 
     companion object {

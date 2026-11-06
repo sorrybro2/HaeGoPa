@@ -13,6 +13,7 @@ import com.haegopa.app.domain.model.DriveMode
 import com.haegopa.app.domain.model.GeoPoint
 import com.haegopa.app.domain.model.QuizAnswerParser
 import com.haegopa.app.domain.model.QuizQuestion
+import com.haegopa.app.domain.model.SearchRadius
 import com.haegopa.app.domain.model.SingAlongSong
 import com.haegopa.app.domain.model.Spot
 import com.haegopa.app.domain.model.SpotCategory
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -114,10 +116,37 @@ class MainViewModel(
                 .first
         }
         val origin = location ?: GeoPoint.DEFAULT_MOCK_ORIGIN
-        val label = if (location != null) "Pleos 내비 현재 위치" else "가상 현재 위치(판교)"
-        _uiState.update { it.copy(origin = origin, originLabel = label) }
+        _uiState.update { it.copy(origin = origin, originLabel = originLabel(location != null)) }
         updateFeed(_uiState.value.selectedCategory) { it.copy(isLoading = false) }
         loadNextPage(_uiState.value.selectedCategory)
+        refreshMapSpots()
+        if (location == null) adoptLateNaviLocation()
+    }
+
+    /** 순정 내비 위치가 늦게 도착하면 그 위치로 원점을 옮기고 주변 목록을 다시 불러온다 */
+    private fun adoptLateNaviLocation() {
+        viewModelScope.launch {
+            val late = naviHelper.currentLocation.filterNotNull().first()
+            _uiState.update { state ->
+                state.copy(
+                    origin = late,
+                    originLabel = originLabel(true),
+                    feeds = SpotCategory.entries.associateWith { FeedState() },
+                )
+            }
+            loadNextPage(_uiState.value.selectedCategory)
+            refreshMapSpots()
+        }
+    }
+
+    private fun originLabel(fromNavi: Boolean): String =
+        if (fromNavi) naviHelper.currentAddress.value ?: "Pleos 내비 현재 위치" else "가상 현재 위치(판교)"
+
+    /** [내비 열기] — Pleos 순정 내비 화면으로 전환 */
+    fun openNavigation() {
+        if (!naviHelper.openNavigationScreen()) {
+            _messages.tryEmit("순정 내비가 없는 기기예요 — 해고파 지도의 경로로 확인해 주세요")
+        }
     }
 
     private fun startTripTicker() {
@@ -146,9 +175,30 @@ class MainViewModel(
 
     // ── 먹·놀·쉬 피드 ─────────────────────────────────────────────────────────
 
+    private var mapSpotsJob: Job? = null
+
+    /** 지도 핀은 목록 무한 스크롤과 따로, 반경 안 스팟을 한 번에 불러온다 (반경을 넓히면 먼 스팟도 바로 보이도록) */
+    private fun refreshMapSpots() {
+        val state = _uiState.value
+        val category = state.selectedCategory
+        val origin = state.origin
+        val radius = state.radiusMeters
+        mapSpotsJob?.cancel()
+        mapSpotsJob = viewModelScope.launch {
+            runCatching { getNearbySpots(category, origin, page = 0, pageSize = MAP_PIN_LIMIT, radiusMeters = radius) }
+                .onSuccess { page ->
+                    val now = _uiState.value
+                    if (now.selectedCategory == category && now.origin == origin && now.radiusMeters == radius) {
+                        _uiState.update { it.copy(mapSpots = page.items) }
+                    }
+                }
+        }
+    }
+
     fun selectCategory(category: SpotCategory) {
         if (_uiState.value.selectedCategory == category) return
         _uiState.update { it.copy(selectedCategory = category) }
+        refreshMapSpots()
         val feed = _uiState.value.feeds.getValue(category)
         if (feed.items.isEmpty() && !feed.endReached) {
             loadNextPage(category, announceWhenDriving = true)
@@ -165,9 +215,14 @@ class MainViewModel(
         val feed = _uiState.value.feeds.getValue(category)
         if (feed.isLoading || feed.endReached) return
         updateFeed(category) { it.copy(isLoading = true, error = null) }
+        // 요청 시점의 원점·반경. 응답 전에 바뀌면(반경 변경 · 내비 위치 도착) 낡은 결과는 버린다
+        val origin = _uiState.value.origin
+        val radius = _uiState.value.radiusMeters
+        fun stale() = _uiState.value.origin != origin || _uiState.value.radiusMeters != radius
         viewModelScope.launch {
-            runCatching { getNearbySpots(category, _uiState.value.origin, feed.nextPage) }
+            runCatching { getNearbySpots(category, origin, feed.nextPage, radiusMeters = radius) }
                 .onSuccess { page ->
+                    if (stale()) return@onSuccess
                     updateFeed(category) { current ->
                         current.copy(
                             items = current.items + page.items,
@@ -181,6 +236,7 @@ class MainViewModel(
                     if (announceWhenDriving && state.isDriving && state.selectedCategory == category) announceTopSpot()
                 }
                 .onFailure { error ->
+                    if (stale()) return@onFailure
                     updateFeed(category) { it.copy(isLoading = false, error = error.message ?: "불러오기 실패") }
                 }
         }
@@ -190,6 +246,42 @@ class MainViewModel(
         val category = _uiState.value.selectedCategory
         updateFeed(category) { FeedState() }
         loadNextPage(category)
+    }
+
+    // ── 검색 반경 (2 · 5 · 10km · 사용자 지정) ───────────────────────────────────
+
+    fun selectRadius(meters: Int) {
+        if (_uiState.value.radiusMeters == meters) return
+        _uiState.update { state ->
+            state.copy(
+                radiusMeters = meters,
+                feeds = SpotCategory.entries.associateWith { FeedState() },
+            )
+        }
+        val driving = _uiState.value.isDriving
+        if (driving) speak("검색 반경을 ${GeoUtils.spokenRadius(meters)}로 바꿨어요.")
+        loadNextPage(_uiState.value.selectedCategory, announceWhenDriving = driving)
+        refreshMapSpots()
+    }
+
+    /** [직접 설정] — 슬라이더 조작이 필요하므로 정차 중에만 연다 */
+    fun openCustomRadius() {
+        if (_uiState.value.isDriving) {
+            _messages.tryEmit("반경 직접 설정은 정차 중에 할 수 있어요")
+            speak("반경 직접 설정은 차를 세운 뒤에 할 수 있어요.")
+            return
+        }
+        _uiState.update { it.copy(radiusDialogOpen = true) }
+    }
+
+    fun applyCustomRadius(meters: Int) {
+        val normalized = SearchRadius.normalizeCustom(meters)
+        _uiState.update { it.copy(radiusDialogOpen = false, customRadiusMeters = normalized) }
+        selectRadius(normalized)
+    }
+
+    fun closeCustomRadius() {
+        _uiState.update { it.copy(radiusDialogOpen = false) }
     }
 
     private fun updateFeed(category: SpotCategory, transform: (FeedState) -> FeedState) {
@@ -204,19 +296,16 @@ class MainViewModel(
         val result = addWaypoint(spot)
         val message = when (result) {
             is WaypointResult.AddedAsWaypoint -> buildString {
-                append("🧭 '${spot.name}' — 순정 내비 경유지 ${result.order}(으)로 추가했어요")
+                append("'${spot.name}' — 순정 내비 경유지 ${result.order}(으)로 추가했어요")
                 if (spot.detourMinutes > 0) append(" (경로 +${spot.detourMinutes}분)")
             }
-            is WaypointResult.SetAsDestination -> "🏁 진행 중인 경로가 없어 '${spot.name}'(으)로 길안내를 시작했어요"
+            is WaypointResult.SetAsDestination -> "진행 중인 경로가 없어 '${spot.name}'(으)로 길안내를 시작했어요"
             WaypointResult.AlreadyAdded -> "이미 경로에 담긴 스팟이에요"
             is WaypointResult.LimitReached -> "경유지는 최대 ${result.max}곳까지 추가할 수 있어요 (순정 내비 규격)"
             is WaypointResult.Failed -> "경유지 추가 실패: ${result.reason}"
         }
         _messages.tryEmit(message)
         if (result.isSuccess && _uiState.value.isDriving) speak("${spot.name}, 경로에 추가했어요.")
-        if (result.isSuccess && spot.hasDocent && !_uiState.value.isDriving) {
-            _messages.tryEmit("🔊 '${spot.name}' 도슨트 해설은 카드의 [도슨트] 버튼으로 들을 수 있어요")
-        }
     }
 
     fun clearWaypoints() {
@@ -245,7 +334,7 @@ class MainViewModel(
 
     fun openStretching(placeName: String?) {
         if (_uiState.value.isDriving) {
-            _messages.tryEmit("🔒 스트레칭 가이드는 정차 중에만 열 수 있어요")
+            _messages.tryEmit("스트레칭 가이드는 정차 중에만 열 수 있어요")
             speak("스트레칭 가이드는 차를 세운 뒤에 열 수 있어요.")
             return
         }
@@ -276,6 +365,7 @@ class MainViewModel(
                 // 주행 시작 시 정차 전용 화면(상세, 스트레칭)을 즉시 닫는다
                 detailSpot = if (driving) null else state.detailSpot,
                 stretchingOpen = if (driving) false else state.stretchingOpen,
+                radiusDialogOpen = if (driving) false else state.radiusDialogOpen,
             )
         }
         val current = _uiState.value.driveMode
@@ -288,14 +378,14 @@ class MainViewModel(
                 val state = _uiState.value
                 val top = state.currentFeed.items.firstOrNull()
                 val script = if (top != null) {
-                    "주행이 시작돼 화면을 간단히 줄였어요. 가장 가까운 ${state.selectedCategory.label}는 " +
+                    "주행 중에는 큰 글씨 목록으로 바꿨어요. 가장 가까운 ${state.selectedCategory.label}는 " +
                         "${GeoUtils.spokenDistance(top.distanceMeters)} 거리의 ${top.name}입니다."
                 } else {
-                    "주행이 시작돼 화면을 간단히 줄였어요."
+                    "주행 중에는 큰 글씨 목록으로 바꿨어요."
                 }
                 if (state.quiz == null) speak(script)
             }
-            DriveMode.PARKED -> _messages.tryEmit("🅿️ 정차 중 — 반경 2km 전체 목록을 다시 열었어요")
+            DriveMode.PARKED -> _messages.tryEmit("정차 중 — 상세 정보 · 도슨트 · 스트레칭을 다시 열 수 있어요")
         }
     }
 
@@ -303,7 +393,7 @@ class MainViewModel(
         val state = _uiState.value
         val top = state.currentFeed.items.firstOrNull()
         if (top == null) {
-            speak("${state.selectedCategory.label}, 반경 2킬로미터 안에서 찾고 있어요.")
+            speak("${state.selectedCategory.label}, 반경 ${GeoUtils.spokenRadius(state.radiusMeters)} 안에서 찾고 있어요.")
             return
         }
         announceSpot(top)
@@ -340,7 +430,7 @@ class MainViewModel(
         val song = songs[nextIndex]
         mrPlayer.start(song)
         _uiState.update { it.copy(booster = it.booster.copy(songIndex = nextIndex, song = song)) }
-        _messages.tryEmit("🎤 다음 곡: ${song.title}")
+        _messages.tryEmit("다음 곡: ${song.title}")
     }
 
     fun startQuiz() {
@@ -385,7 +475,7 @@ class MainViewModel(
 
         if (command.isBlank()) {
             _uiState.update { it.copy(quiz = quiz.copy(phase = QuizPhase.ASKING, heard = "(인식된 말이 없어요)")) }
-            _messages.tryEmit("🎙️ 음성 인식 엔진을 쓸 수 없어요 — '음성 응답 시뮬레이션' 버튼으로 답해 보세요")
+            _messages.tryEmit("음성 인식 엔진을 쓸 수 없어요 — '음성 응답 시뮬레이션' 버튼으로 답해 보세요")
             return
         }
         val choice = QuizAnswerParser.parse(command, quiz.current.choices)
@@ -487,7 +577,8 @@ class MainViewModel(
     }
 
     companion object {
-        private const val ORIGIN_WAIT_MS = 1_500L
+        private const val ORIGIN_WAIT_MS = 3_000L
+        private const val MAP_PIN_LIMIT = 60
         private const val TRIP_POLL_MS = 5_000L
         private const val NEXT_QUESTION_DELAY_MS = 5_000L
         const val FATIGUE_THRESHOLD_MINUTES = 120

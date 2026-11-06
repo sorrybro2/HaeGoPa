@@ -49,7 +49,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.haegopa.app.domain.model.SpotCategory
 import com.haegopa.app.ui.theme.HaegopaColors
+import com.haegopa.app.ui.theme.ProvideUiScale
+import com.haegopa.app.ui.theme.ink
 import kotlinx.coroutines.delay
 
 private data class StretchStep(val emoji: String, val title: String, val guide: String)
@@ -109,7 +112,9 @@ fun StretchingGuideDialog(
         label = "breathe",
     )
 
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) { ProvideUiScale {
+        val restInk = SpotCategory.REST.ink()
+        val track = HaegopaColors.SurfaceHigher
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = HaegopaColors.Surface,
@@ -124,11 +129,15 @@ fun StretchingGuideDialog(
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = "🎬 1분 힐링 스트레칭" + (placeName?.let { " · $it" } ?: ""),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = HaegopaColors.Rest,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HIcon(HaegopaIcons.Stretch, tint = restInk, size = 28.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "1분 힐링 스트레칭" + (placeName?.let { " · $it" } ?: ""),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = restInk,
+                    )
+                }
                 Text(
                     text = "정차 중에만 열리는 가이드예요 · 영상 가이드 프로토타입(애니메이션 대체)",
                     style = MaterialTheme.typography.labelMedium,
@@ -140,7 +149,7 @@ fun StretchingGuideDialog(
                     Canvas(Modifier.size(200.dp)) {
                         val stroke = 12.dp.toPx()
                         drawArc(
-                            color = HaegopaColors.SurfaceHigher,
+                            color = track,
                             startAngle = -90f,
                             sweepAngle = 360f,
                             useCenter = false,
@@ -178,7 +187,7 @@ fun StretchingGuideDialog(
                     Text(
                         text = "이 동작 ${secondsLeft}초 · 전체 남은 시간 0:%02d".format(TOTAL_SECONDS - elapsed),
                         style = MaterialTheme.typography.labelLarge,
-                        color = HaegopaColors.Rest,
+                        color = restInk,
                     )
                 }
                 Spacer(Modifier.height(14.dp))
@@ -203,8 +212,12 @@ fun StretchingGuideDialog(
                     if (finished) {
                         Button(
                             onClick = { runId += 1 },
-                            colors = ButtonDefaults.buttonColors(containerColor = HaegopaColors.Rest, contentColor = HaegopaColors.Background),
-                        ) { Text("🔁 한 번 더") }
+                            colors = ButtonDefaults.buttonColors(containerColor = HaegopaColors.Rest, contentColor = HaegopaColors.OnAccent),
+                        ) {
+                            HIcon(HaegopaIcons.Refresh, tint = HaegopaColors.OnAccent, size = 20.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text("한 번 더")
+                        }
                         Spacer(Modifier.width(4.dp))
                     }
                     OutlinedButton(onClick = onClose, border = BorderStroke(1.dp, HaegopaColors.Outline)) {
@@ -213,5 +226,5 @@ fun StretchingGuideDialog(
                 }
             }
         }
-    }
+    } }
 }

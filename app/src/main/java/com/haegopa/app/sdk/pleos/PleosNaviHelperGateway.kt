@@ -1,15 +1,21 @@
 package com.haegopa.app.sdk.pleos
 
 import ai.pleos.playground.navi.constants.NaviErrorCode
+import ai.pleos.playground.navi.constants.NaviMode
+import ai.pleos.playground.navi.constants.NavigationStatus
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.CurrentLocationInfo
+import ai.pleos.playground.navi.data.DestinationArrivedInfo
+import ai.pleos.playground.navi.data.DestinationInfo
 import ai.pleos.playground.navi.data.RequestWaypointInfo
 import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.data.RouteStateInfo
+import ai.pleos.playground.navi.data.WaypointInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -18,6 +24,7 @@ import com.haegopa.app.sdk.NaviHelperGateway
 import com.haegopa.app.sdk.SdkBackend
 import com.haegopa.app.sdk.SdkStatus
 import com.haegopa.app.sdk.Waypoint
+import com.haegopa.app.sdk.WaypointKind
 import com.haegopa.app.sdk.WaypointResult
 import com.haegopa.app.sdk.mock.MockNaviHelperImpl
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -49,6 +56,9 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
     private val _currentLocation = MutableStateFlow<GeoPoint?>(null)
     override val currentLocation: StateFlow<GeoPoint?> = _currentLocation.asStateFlow()
 
+    private val _currentAddress = MutableStateFlow<String?>(null)
+    override val currentAddress: StateFlow<String?> = _currentAddress.asStateFlow()
+
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
     override val events: SharedFlow<String> = _events.asSharedFlow()
 
@@ -58,38 +68,136 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
     @Volatile
     private var connected = false
 
+    // 길안내 여부: Pleos 에뮬레이터에서는 안내 중에도 RouteStateInfo.isRouting 이 false 로 오는 경우가 있어
+    // NavigationStatus(ROUTE_DRIVE) · NaviMode(ROUTE/SIMULATION_GUIDING) · 남은 거리가 있는 목적지를 함께 본다.
     @Volatile
-    private var routing = false
+    private var routeFlag = false
+
+    @Volatile
+    private var routeDriveStatus = false
+
+    @Volatile
+    private var activeDestination: Waypoint? = null
+
+    private val routing: Boolean get() = routeFlag || routeDriveStatus || activeDestination != null
 
     @Volatile
     private var naviWaypointCount = 0
 
+    @Volatile
+    private var naviStops: List<Waypoint> = emptyList()
+
     private val listener = object : NaviHelperEventListener {
         override fun onRouteStarted(info: RouteStartInfo) {
-            routing = true
+            routeFlag = true
+            refreshRouteSnapshot()
         }
 
-        override fun onRouteEnded() {
-            routing = false
-            naviWaypointCount = 0
-        }
+        override fun onRouteEnded() = onRouteFinished()
 
-        override fun onRouteCancelled() {
-            routing = false
-            naviWaypointCount = 0
-        }
+        override fun onRouteCancelled() = onRouteFinished()
+
+        override fun onDestinationArrived(info: DestinationArrivedInfo) = onRouteFinished()
 
         override fun onRouteStateInfo(info: RouteStateInfo) {
-            routing = info.isRouting
+            val mode = runCatching { info.naviMode }.getOrNull()
+            routeFlag = info.isRouting || mode == NaviMode.ROUTE_GUIDING || mode == NaviMode.SIMULATION_GUIDING
+            Log.i(TAG, "routeState isRouting=${info.isRouting} naviMode=$mode → routing=$routing")
+        }
+
+        override fun onNavigationStatus(status: NavigationStatus) {
+            routeDriveStatus = status == NavigationStatus.ROUTE_DRIVE
+            Log.i(TAG, "navigationStatus=$status → routing=$routing")
+            if (routeDriveStatus) refreshRouteSnapshot()
+        }
+
+        override fun onDestinationInfo(info: DestinationInfo) {
+            Log.i(TAG, "destinationInfo name=${info.name} lat=${info.latitude} lng=${info.longitude} remain=${info.remainDistance}m")
+            val point = validPoint(info.latitude, info.longitude)
+                ?: validPoint(info.displayLatitude, info.displayLongitude)
+                ?: requestedPoints[info.name]
+            activeDestination = if (info.remainDistance > 0 && info.name.isNotBlank() && point != null) {
+                Waypoint(info.name, point, WaypointKind.DESTINATION, order = 0)
+            } else {
+                null
+            }
+            mirrorNaviRoute()
+        }
+
+        override fun onWayPointInfo(waypoints: List<WaypointInfo>) {
+            waypoints.forEach {
+                Log.i(TAG, "waypointInfo name=${it.name} lat=${it.latitude} lng=${it.longitude} display=${it.displayLatitude},${it.displayLongitude}")
+            }
+            // 에뮬레이터에서 경유지 좌표가 (0,0)으로 오는 경우가 있어 display 좌표 → 해고파가 보낸 좌표 순으로 보완
+            naviStops = waypoints.filter { it.name.isNotBlank() }.mapNotNull { w ->
+                val point = validPoint(w.latitude, w.longitude)
+                    ?: validPoint(w.displayLatitude, w.displayLongitude)
+                    ?: requestedPoints[w.name]
+                    ?: return@mapNotNull null
+                Waypoint(w.name, point, WaypointKind.WAYPOINT, order = 0)
+            }.mapIndexed { i, w -> w.copy(order = i + 1) }
+            naviWaypointCount = waypoints.count { it.name.isNotBlank() }
+            mirrorNaviRoute()
         }
 
         override fun onCurrentLocationInfo(info: CurrentLocationInfo) {
+            _currentAddress.value = runCatching { info.address }.getOrNull()?.takeIf { it.isNotBlank() }
             _currentLocation.value = GeoPoint(info.latitude, info.longitude)
         }
 
         override fun onError(errorCode: NaviErrorCode) {
             _events.tryEmit("순정 내비 응답: ${errorCode.toKorean()}")
         }
+    }
+
+    /**
+     * 해고파가 내비에 보낸 스팟 좌표. Pleos 내비의 WaypointInfo 는 좌표가 (0,0)·display=null 로 오므로
+     * (Pleos Connect 에뮬레이터 v2.1.0 에서 확인) 이름으로 원래 좌표를 찾아 보완한다. 앱을 다시 켜도 남도록 저장.
+     */
+    private val requestedPoints = RequestedPointStore(appContext)
+
+    private class RequestedPointStore(context: Context) {
+        private val prefs = context.getSharedPreferences("navi_requested_points", Context.MODE_PRIVATE)
+
+        operator fun get(name: String): GeoPoint? = prefs.getString(name, null)?.split(',')?.let { parts ->
+            val lat = parts.getOrNull(0)?.toDoubleOrNull()
+            val lng = parts.getOrNull(1)?.toDoubleOrNull()
+            if (lat != null && lng != null) GeoPoint(lat, lng) else null
+        }
+
+        operator fun set(name: String, point: GeoPoint) {
+            prefs.edit().putString(name, "${point.latitude},${point.longitude}").apply()
+        }
+    }
+
+    private fun validPoint(lat: Double?, lng: Double?): GeoPoint? {
+        if (lat == null || lng == null) return null
+        if (lat == 0.0 && lng == 0.0) return null
+        if (lat !in -90.0..90.0 || lng !in -180.0..180.0) return null
+        return GeoPoint(lat, lng)
+    }
+
+    private fun onRouteFinished() {
+        routeFlag = false
+        routeDriveStatus = false
+        activeDestination = null
+        naviStops = emptyList()
+        naviWaypointCount = 0
+        mock.clearAll()
+    }
+
+    /** 순정 내비의 실제 목적지 · 경유지를 해고파 '내 경로' 카드와 지도에 그대로 보여 준다 */
+    private fun mirrorNaviRoute() {
+        val destination = activeDestination ?: return
+        mock.syncFromNavi(destination, naviStops)
+    }
+
+    private fun refreshRouteSnapshot() {
+        val helper = naviHelper ?: return
+        runCatching {
+            helper.getDestinationInfo()
+            helper.getWaypointInfo()
+        }.onFailure { Log.w(TAG, "route snapshot request failed", it) }
     }
 
     init {
@@ -121,6 +229,8 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
                         helper.addListener(listener)
                         helper.getRouteStateInfo()
                         helper.getCurrentLocationInfo()
+                        helper.getDestinationInfo()
+                        helper.getWaypointInfo()
                     }.onFailure { Log.w(TAG, "post-initialize request failed", it) }
                 },
                 { error -> fallbackToMock(error) },
@@ -141,6 +251,7 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
         val helper = naviHelper
         if (!connected || helper == null) return mock.addWaypointDetailed(name, latitude, longitude)
         if (mock.contains(name)) return WaypointResult.AlreadyAdded
+        requestedPoints[name] = GeoPoint(latitude, longitude)
 
         return try {
             if (routing) {
@@ -163,7 +274,9 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
                         poiSubId = "",
                     ),
                 )
-                routing = true
+                routeFlag = true
+                activeDestination = Waypoint(name, GeoPoint(latitude, longitude), WaypointKind.DESTINATION, order = 0)
+                naviStops = emptyList()
                 naviWaypointCount = 0
                 mock.clearWaypoints()
                 mock.recordDestination(name, latitude, longitude)
@@ -185,6 +298,15 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
         mock.clearWaypoints()
     }
 
+    /** Pleos 순정 내비 앱을 앞으로 불러온다 (Pleos 에서는 해고파와 같은 메인 영역에 열린다) */
+    override fun openNavigationScreen(): Boolean {
+        val intent = appContext.packageManager.getLaunchIntentForPackage(NAVI_APP_PACKAGE) ?: return false
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { appContext.startActivity(intent) }
+            .onFailure { Log.w(TAG, "open navigation failed", it) }
+            .isSuccess
+    }
+
     private fun NaviErrorCode.toKorean(): String = when (name) {
         "CAUSE_LOW_BATTERY" -> "배터리 잔량 부족으로 경로를 만들 수 없어요"
         "CAUSE_SEARCH_ROUTE_OVER_DISTANCE" -> "탐색 가능 거리를 넘었어요"
@@ -197,5 +319,6 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
     private companion object {
         const val TAG = "PleosNaviHelper"
         const val CONNECT_TIMEOUT_MS = 4_000L
+        const val NAVI_APP_PACKAGE = "ai.umos.maps.android.navigation.app"
     }
 }

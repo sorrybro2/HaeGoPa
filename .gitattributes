@@ -10,3 +10,4 @@ gradlew text eol=lf
 *.jar binary
 *.apk binary
 *.png binary
+*.otf binary

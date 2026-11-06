@@ -54,6 +54,14 @@ object GeoUtils {
     fun spokenDistance(meters: Int): String =
         if (meters < 1000) "${meters}미터" else String.format(Locale.US, "%.1f킬로미터", meters / 1000.0)
 
+    /** 검색 반경 표기: 2km / 7.5km (정수 km 는 소수점 없이) */
+    fun formatRadius(meters: Int): String =
+        if (meters % 1000 == 0) "${meters / 1000}km" else String.format(Locale.US, "%.1fkm", meters / 1000.0)
+
+    /** 검색 반경 낭독: 2킬로미터 / 7.5킬로미터 */
+    fun spokenRadius(meters: Int): String =
+        if (meters % 1000 == 0) "${meters / 1000}킬로미터" else String.format(Locale.US, "%.1f킬로미터", meters / 1000.0)
+
     /** 도심 평균 속도 기준 예상 소요 시간(분, 최소 1분) */
     fun etaMinutes(distanceMeters: Int, avgSpeedKmh: Double = 24.0): Int =
         max(1, ceil(distanceMeters / (avgSpeedKmh * 1000.0 / 60.0)).toInt())

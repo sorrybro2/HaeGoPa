@@ -33,10 +33,11 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
- * 반경 2km 더미 POI 저장소 (먹고파 · 놀고파 · 쉬고파 각 15곳 + 반경 밖/우회 초과 검증용 샘플).
+ * 더미 POI 저장소: 먹고파 · 놀고파 · 쉬고파 각 15곳(반경 2km 안) + 2~18km 원거리 스팟 + 우회 초과 검증용 샘플.
+ * 검색 반경(2 · 5 · 10km · 사용자 지정)에 따라 포함되는 스팟이 달라진다.
  *
  * 스팟은 "현재 위치 기준 거리·방위"로 정의되어 있어, NaviHelper 가 알려준 실제 현재 위치든
- * 가상 위치(판교)든 항상 주변 2km 안에 일관되게 배치된다. 상호명은 모두 가상의 이름이다.
+ * 가상 위치(판교)든 항상 같은 상대 배치로 나타난다. 상호명은 모두 가상의 이름이다.
  */
 class MockDataRepository(
     private val latencyMillis: Long = DEFAULT_LATENCY_MS,
@@ -127,10 +128,19 @@ class MockDataRepository(
             SpotSeed("e13", EAT, "타코 트럭 스테이션", "주차장 상설 푸드트럭, 주차 후 5분 포장", 1490, 45.0, listOf(TAKEOUT, PARKING), detourMinutes = 4),
             SpotSeed("e14", EAT, "누룽지 통닭 포장", "예약 픽업 시 대기 없이 바로 수령", 1650, 215.0, listOf(TAKEOUT, PICKUP), detourMinutes = 5),
             SpotSeed("e15", EAT, "생과일 주스 DT", "졸음 쫓는 상큼한 착즙 주스 드라이브스루", 1820, 350.0, listOf(DRIVE_THRU), detourMinutes = 4),
-            // 검증용: 우회 7분 → 제외 / 반경 2km 밖 → 제외
+            // 검증용: 우회 7분 → 항상 제외
             SpotSeed("e16", EAT, "칼국수 본점", "줄 서는 칼국수집 (경로 우회 7분)", 1720, 160.0, listOf(TAKEOUT), detourMinutes = 7),
-            SpotSeed("e17", EAT, "수제버거 하우스", "반경 밖 매장", 2150, 75.0, listOf(TAKEOUT), detourMinutes = 4),
-            SpotSeed("e18", EAT, "피자 플래닛 픽업", "반경 밖 매장", 2480, 235.0, listOf(PICKUP), detourMinutes = 5),
+            // 2km 밖 — 반경을 5km · 10km · 사용자 지정으로 넓히면 나타난다
+            SpotSeed("e17", EAT, "수제버거 하우스", "두툼한 패티 수제버거, 전화 주문 후 픽업", 2150, 75.0, listOf(TAKEOUT, PICKUP), detourMinutes = 4),
+            SpotSeed("e18", EAT, "피자 플래닛 픽업", "레귤러 피자 15분 완성, 차량 픽업존 운영", 2480, 235.0, listOf(PICKUP), detourMinutes = 5),
+            SpotSeed("e19", EAT, "국도변 한우국밥", "국도 바로 옆 24시간 국밥집, 넓은 주차장", 3100, 310.0, listOf(TAKEOUT, PARKING), detourMinutes = 3),
+            SpotSeed("e20", EAT, "브런치 드라이브스루", "샌드위치·라떼 세트를 차 안에서 받는 브런치 DT", 3900, 40.0, listOf(DRIVE_THRU, CAFE), detourMinutes = 2),
+            SpotSeed("e21", EAT, "손만두 휴게 식당", "직접 빚은 손만두, 동승자 간식 포장", 4600, 190.0, listOf(TAKEOUT, FAMILY), detourMinutes = 4),
+            SpotSeed("e22", EAT, "막국수 정원", "시원한 막국수, 정원 주차장에서 바로 식사", 5800, 260.0, listOf(PARKING), detourMinutes = 5),
+            SpotSeed("e23", EAT, "베이커리 팜 DT", "농장 직영 빵집 드라이브스루", 7200, 120.0, listOf(DRIVE_THRU), detourMinutes = 4),
+            SpotSeed("e24", EAT, "어촌 회덮밥 포장", "항구 앞 회덮밥 포장 전문점", 8900, 20.0, listOf(TAKEOUT), detourMinutes = 5),
+            SpotSeed("e25", EAT, "고속도로 우동 명가", "휴게소 옆 우동집, 주문 3분이면 완성", 12400, 330.0, listOf(TAKEOUT, PARKING), detourMinutes = 3),
+            SpotSeed("e26", EAT, "시골 장터 호떡", "오일장 명물 씨앗호떡 포장", 16800, 150.0, listOf(TAKEOUT, FAMILY), detourMinutes = 5),
 
             // ── 🎡 놀고파: 랜드마크 · 드라이브 명소 · 숨은 뷰포인트 (TTS 도슨트) ─────────────────
             SpotSeed(
@@ -193,7 +203,35 @@ class MockDataRepository(
                 "p15", PLAY, "구름다리 전망대", "산자락을 잇는 구름다리에서 보는 시내 전경", 1960, 60.0, listOf(VIEW, LANDMARK, DOCENT),
                 docent = "구름다리 전망대는 두 산자락을 잇는 출렁다리 위에서 시내를 내려다보는 곳이에요. 바람이 세게 불면 살짝 흔들리니 난간을 잡고 건너세요.",
             ),
-            SpotSeed("p16", PLAY, "해안 일주 도로", "반경 밖 드라이브 코스", 2300, 120.0, listOf(DRIVE_COURSE)),
+            // 2km 밖 — 반경을 넓히면 나타난다
+            SpotSeed(
+                "p16", PLAY, "해안 일주 도로", "바다를 끼고 달리는 시원한 해안 드라이브", 2300, 120.0, listOf(DRIVE_COURSE, VIEW, DOCENT),
+                docent = "해안 일주 도로는 바다를 오른쪽에 끼고 달리는 드라이브 코스예요. 창문을 조금 내리면 파도 소리가 들려요. 전망 쉼터마다 잠깐 세워 바다를 보고 가세요.",
+            ),
+            SpotSeed(
+                "p17", PLAY, "고분 역사 공원", "천오백 년 전 고분 사이를 걷는 역사 산책길", 3300, 80.0, listOf(LANDMARK, FAMILY, DOCENT),
+                docent = "고분 역사 공원에는 천오백 년 전에 만들어진 둥근 무덤들이 언덕처럼 이어져 있어요. 해 질 녘 고분 능선 위로 지는 해가 특히 아름다워요.",
+            ),
+            SpotSeed(
+                "p18", PLAY, "억새 언덕 드라이브", "가을이면 은빛 억새가 출렁이는 언덕길", 4400, 220.0, listOf(DRIVE_COURSE, VIEW, DOCENT),
+                docent = "억새 언덕은 가을이면 언덕 전체가 은빛으로 출렁여요. 바람이 부는 날 천천히 달리면 억새가 파도처럼 일렁이는 모습을 볼 수 있어요.",
+            ),
+            SpotSeed(
+                "p19", PLAY, "폐광 동굴 테마파크", "옛 광산 갱도를 개조한 동굴 테마파크", 6100, 300.0, listOf(LANDMARK, FAMILY, DOCENT),
+                docent = "폐광 동굴 테마파크는 문을 닫은 광산 갱도를 빛과 소리의 동굴로 바꾼 곳이에요. 안은 한여름에도 서늘하니 겉옷을 챙기세요.",
+            ),
+            SpotSeed(
+                "p20", PLAY, "등대 전망 방파제", "빨간 등대까지 이어지는 방파제 야경", 8300, 170.0, listOf(VIEW, NIGHT_VIEW, DOCENT),
+                docent = "등대 전망 방파제 끝에는 빨간 등대가 서 있어요. 밤이 되면 등대 불빛과 항구 조명이 바다에 길게 비쳐요.",
+            ),
+            SpotSeed(
+                "p21", PLAY, "수목원 숲 터널", "메타세쿼이아가 하늘을 덮는 숲 터널", 11200, 40.0, listOf(VIEW, PICNIC, DOCENT),
+                docent = "수목원 숲 터널은 키 큰 메타세쿼이아가 양쪽에서 하늘을 덮는 길이에요. 숲 냄새를 맡으며 천천히 걸으면 운전 피로가 풀려요.",
+            ),
+            SpotSeed(
+                "p22", PLAY, "댐 전망 쉼터", "거대한 댐과 호수를 내려다보는 전망 쉼터", 15600, 280.0, listOf(VIEW, LANDMARK, DOCENT),
+                docent = "댐 전망 쉼터에서는 높은 댐 아래로 넓은 호수가 펼쳐져요. 방류하는 날에는 하얀 물보라가 장관을 이뤄요.",
+            ),
 
             // ── ☕ 쉬고파: 졸음쉼터 · 휴게소 · 뷰 카페 (1분 힐링 스트레칭) ───────────────────────
             SpotSeed("r01", REST, "솔바람 졸음쉼터", "그늘막·화장실 완비, 10분 눈 붙이기 좋은 쉼터", 300, 5.0, listOf(DROWSY_SHELTER, TOILET, STRETCH)),
@@ -211,7 +249,14 @@ class MockDataRepository(
             SpotSeed("r13", REST, "고개마루 졸음쉼터", "고갯마루 전망 쉼터, 자판기 있음", 1780, 10.0, listOf(DROWSY_SHELTER, VIEW)),
             SpotSeed("r14", REST, "숲속 명상 쉼터", "새소리 들으며 1분 호흡 명상", 1890, 290.0, listOf(STRETCH, VIEW)),
             SpotSeed("r15", REST, "언덕 위 휴게소", "주유·편의점·화장실 원스톱 휴게소", 1990, 115.0, listOf(REST_AREA, TOILET, EV_CHARGING)),
-            SpotSeed("r16", REST, "상행선 휴게소", "반경 밖 휴게소", 2600, 30.0, listOf(REST_AREA)),
+            // 2km 밖 — 반경을 넓히면 나타난다
+            SpotSeed("r16", REST, "상행선 휴게소", "주유·전기차 충전·푸드코트를 갖춘 대형 휴게소", 2600, 30.0, listOf(REST_AREA, TOILET, EV_CHARGING)),
+            SpotSeed("r17", REST, "산림욕 졸음쉼터", "편백나무 숲 사이 조용한 졸음쉼터", 3500, 140.0, listOf(DROWSY_SHELTER, STRETCH)),
+            SpotSeed("r18", REST, "드라이브인 카페 바람", "차에 탄 채 주문하고 전망 주차칸에서 쉬는 카페", 4700, 350.0, listOf(CAFE, VIEW)),
+            SpotSeed("r19", REST, "하늘길 졸음쉼터", "화장실·운동기구가 있는 고갯길 쉼터", 6400, 60.0, listOf(DROWSY_SHELTER, TOILET, STRETCH)),
+            SpotSeed("r20", REST, "온천 족욕 휴게소", "온천수 족욕장이 있는 휴게소", 9100, 230.0, listOf(REST_AREA, TOILET)),
+            SpotSeed("r21", REST, "고속도로 졸음쉼터", "본선 바로 옆, 10분 쪽잠에 좋은 쉼터", 13300, 15.0, listOf(DROWSY_SHELTER, TOILET)),
+            SpotSeed("r22", REST, "호숫가 캠핑 쉼터", "호숫가 그늘에서 파워냅, 차박 가능", 17900, 200.0, listOf(VIEW, NAP)),
         )
     }
 }
