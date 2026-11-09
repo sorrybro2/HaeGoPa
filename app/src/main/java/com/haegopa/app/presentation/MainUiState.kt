@@ -11,6 +11,7 @@ import com.haegopa.app.domain.model.SpotCategory
 import com.haegopa.app.sdk.SdkBackend
 import com.haegopa.app.sdk.SdkStatus
 import com.haegopa.app.sdk.Waypoint
+import com.haegopa.app.sdk.WaypointKind
 
 /** 카테고리별 무한 스크롤 피드 상태 */
 data class FeedState(
@@ -86,4 +87,7 @@ data class MainUiState(
     val currentFeed: FeedState get() = feeds.getValue(selectedCategory)
 
     fun isAdded(spot: Spot): Boolean = waypoints.any { it.name == spot.name }
+
+    /** 이 스팟이 순정 내비 경로에서 맡은 역할 (목적지 / 경유지 / 없음) — [목적지]·[경유지] 버튼 상태 */
+    fun routeRole(spot: Spot): WaypointKind? = waypoints.firstOrNull { it.name == spot.name }?.kind
 }

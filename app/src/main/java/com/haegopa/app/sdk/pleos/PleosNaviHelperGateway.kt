@@ -37,8 +37,9 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Pleos NaviHelper SDK(v3.0.5) 어댑터.
  *
- * - 경로 안내 중  : `NaviHelper.addWaypoint(RequestWaypointInfo(..., WaypointIndex.FIRST/SECOND))`
- * - 경로가 없을 때 : `NaviHelper.requestRoute(RouteInfo(...))` 로 해당 스팟 길안내 시작
+ * - [목적지]      : `NaviHelper.requestRoute(RouteInfo(...))` 로 해당 스팟 길안내 시작 (기존 경로는 새 경로로 바뀜)
+ * - [경유지]      : 경로 안내 중이면 `NaviHelper.addWaypoint(RequestWaypointInfo(..., WaypointIndex.FIRST/SECOND))`,
+ *                   경로가 없으면 [목적지]와 같이 requestRoute
  * - 현재 위치     : `getCurrentLocationInfo()` → `onCurrentLocationInfo` (2km 반경 원점)
  * - Pleos 내비가 없는 기기(일반 AVD)에서는 [MockNaviHelperImpl] 로 자동 폴백한다.
  */
@@ -224,7 +225,7 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
             helper.initialize(
                 {
                     connected = true
-                    _status.value = SdkStatus("Pleos NaviHelper", SdkBackend.PLEOS, "v3.0.5 · 경유지/길안내 연동")
+                    _status.value = SdkStatus("Pleos NaviHelper", SdkBackend.PLEOS, "v3.0.5 · 목적지/경유지 길안내 연동")
                     runCatching {
                         helper.addListener(listener)
                         helper.getRouteStateInfo()
@@ -264,28 +265,47 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
                 mock.addWaypointDetailed(name, latitude, longitude)
                 WaypointResult.AddedAsWaypoint(order = naviWaypointCount, viaPleos = true)
             } else {
-                helper.requestRoute(
-                    RouteInfo(
-                        latitude = latitude,
-                        longitude = longitude,
-                        poiName = name,
-                        poiId = "",
-                        address = "",
-                        poiSubId = "",
-                    ),
-                )
-                routeFlag = true
-                activeDestination = Waypoint(name, GeoPoint(latitude, longitude), WaypointKind.DESTINATION, order = 0)
-                naviStops = emptyList()
-                naviWaypointCount = 0
-                mock.clearWaypoints()
-                mock.recordDestination(name, latitude, longitude)
-                WaypointResult.SetAsDestination(viaPleos = true)
+                startRoute(helper, name, latitude, longitude)
             }
         } catch (t: Throwable) {
             Log.w(TAG, "NaviHelper request failed", t)
             WaypointResult.Failed(t.message ?: t.javaClass.simpleName)
         }
+    }
+
+    @Synchronized
+    override fun setDestinationDetailed(name: String, latitude: Double, longitude: Double): WaypointResult {
+        val helper = naviHelper
+        if (!connected || helper == null) return mock.setDestinationDetailed(name, latitude, longitude)
+        if (activeDestination?.name == name) return WaypointResult.AlreadyDestination
+        requestedPoints[name] = GeoPoint(latitude, longitude)
+        return try {
+            startRoute(helper, name, latitude, longitude)
+        } catch (t: Throwable) {
+            Log.w(TAG, "NaviHelper requestRoute failed", t)
+            WaypointResult.Failed(t.message ?: t.javaClass.simpleName)
+        }
+    }
+
+    /** 이 스팟을 목적지로 새 길안내를 요청한다. 순정 내비가 기존 경로(경유지 포함)를 새 경로로 바꾼다 */
+    private fun startRoute(helper: NaviHelper, name: String, latitude: Double, longitude: Double): WaypointResult {
+        helper.requestRoute(
+            RouteInfo(
+                latitude = latitude,
+                longitude = longitude,
+                poiName = name,
+                poiId = "",
+                address = "",
+                poiSubId = "",
+            ),
+        )
+        routeFlag = true
+        activeDestination = Waypoint(name, GeoPoint(latitude, longitude), WaypointKind.DESTINATION, order = 0)
+        naviStops = emptyList()
+        naviWaypointCount = 0
+        mock.clearWaypoints()
+        mock.recordDestination(name, latitude, longitude)
+        return WaypointResult.SetAsDestination(viaPleos = true)
     }
 
     @Synchronized

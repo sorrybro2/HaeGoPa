@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.haegopa.app.FeatureFlags
 import com.haegopa.app.audio.MrSynthPlayer
 import com.haegopa.app.data.QuizBank
 import com.haegopa.app.data.SingAlongCatalog
@@ -19,7 +20,9 @@ import com.haegopa.app.domain.model.Spot
 import com.haegopa.app.domain.model.SpotCategory
 import com.haegopa.app.domain.usecase.AddWaypointUseCase
 import com.haegopa.app.domain.usecase.GetNearbySpotsUseCase
+import com.haegopa.app.domain.usecase.SetDestinationUseCase
 import com.haegopa.app.domain.util.GeoUtils
+import com.haegopa.app.domain.util.KoreanJosa
 import com.haegopa.app.sdk.NaviHelperGateway
 import com.haegopa.app.sdk.SdkBackend
 import com.haegopa.app.sdk.SpeechCaption
@@ -44,13 +47,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 해고파 메인 화면 ViewModel (MVVM · 단방향 데이터 흐름).
- * - 먹·놀·쉬 2km 무한 피드 / 원터치 경유지 주입
+ * - 먹·놀·쉬 2km 무한 피드 / 원터치 목적지 안내 · 경유지 추가 (순정 내비)
  * - 차속에 따른 정차·주행 UI 분기 (Driver Distraction)
- * - 졸음 방지 모드: 합성 MR + 싱얼롱 가사 + TTS/STT 1분 상식 퀴즈
+ * - 졸음 방지 모드: 합성 MR + 싱얼롱 가사 + TTS/STT 1분 상식 퀴즈 ([FeatureFlags.DROWSINESS_BOOSTER] 로 끌 수 있음)
  */
 class MainViewModel(
     private val getNearbySpots: GetNearbySpotsUseCase,
     private val addWaypoint: AddWaypointUseCase,
+    private val setDestination: SetDestinationUseCase,
     private val naviHelper: NaviHelperGateway,
     private val vehicleManager: VehicleGateway,
     private val speechHelper: SpeechGateway,
@@ -290,22 +294,41 @@ class MainViewModel(
         }
     }
 
-    // ── 원터치 경유지 주입 ─────────────────────────────────────────────────────
+    // ── 원터치 목적지 · 경유지 (순정 내비 NaviHelper) ─────────────────────────
 
+    /** [목적지]: 진행 중인 경로가 있어도 이 스팟으로 새로 길안내 */
+    fun onSetDestination(spot: Spot) {
+        val result = setDestination(spot)
+        val to = KoreanJosa.ro(spot.name)
+        val message = when (result) {
+            is WaypointResult.SetAsDestination -> "'${spot.name}'$to 길안내를 시작했어요"
+            WaypointResult.AlreadyDestination -> "이미 '${spot.name}'$to 안내 중이에요"
+            is WaypointResult.Failed -> "길안내 요청 실패: ${result.reason}"
+            else -> null
+        }
+        message?.let { _messages.tryEmit(it) }
+        if (result.isSuccess && _uiState.value.isDriving) speak("${spot.name}$to 안내를 시작할게요.")
+    }
+
+    /** [경유지]: 길안내 중이면 지금 경로에 끼워 넣고, 경로가 없으면 목적지로 안내 */
     fun onAddWaypoint(spot: Spot) {
         val result = addWaypoint(spot)
+        val to = KoreanJosa.ro(spot.name)
         val message = when (result) {
             is WaypointResult.AddedAsWaypoint -> buildString {
-                append("'${spot.name}' — 순정 내비 경유지 ${result.order}(으)로 추가했어요")
+                append("'${spot.name}' — 순정 내비 경유지 ${result.order}${KoreanJosa.ro(result.order.toString())} 추가했어요")
                 if (spot.detourMinutes > 0) append(" (경로 +${spot.detourMinutes}분)")
             }
-            is WaypointResult.SetAsDestination -> "진행 중인 경로가 없어 '${spot.name}'(으)로 길안내를 시작했어요"
+            is WaypointResult.SetAsDestination -> "진행 중인 경로가 없어 '${spot.name}'$to 길안내를 시작했어요"
             WaypointResult.AlreadyAdded -> "이미 경로에 담긴 스팟이에요"
+            WaypointResult.AlreadyDestination -> "이미 '${spot.name}'$to 안내 중이에요"
             is WaypointResult.LimitReached -> "경유지는 최대 ${result.max}곳까지 추가할 수 있어요 (순정 내비 규격)"
             is WaypointResult.Failed -> "경유지 추가 실패: ${result.reason}"
         }
         _messages.tryEmit(message)
-        if (result.isSuccess && _uiState.value.isDriving) speak("${spot.name}, 경로에 추가했어요.")
+        if (result.isSuccess && _uiState.value.isDriving) {
+            speak(if (result is WaypointResult.SetAsDestination) "${spot.name}$to 안내를 시작할게요." else "${spot.name}, 경유지로 추가했어요.")
+        }
     }
 
     fun clearWaypoints() {
@@ -401,13 +424,14 @@ class MainViewModel(
 
     private fun announceSpot(spot: Spot) {
         val detour = if (spot.category == SpotCategory.EAT) " 경로에서 ${spot.detourMinutes}분만 돌아가면 돼요." else ""
-        speak("${spot.category.label} 추천, ${GeoUtils.spokenDistance(spot.distanceMeters)} 거리의 ${spot.name}.$detour 경유지 추가 버튼을 누르면 내비에 바로 담아 드려요.")
+        speak("${spot.category.label} 추천, ${GeoUtils.spokenDistance(spot.distanceMeters)} 거리의 ${spot.name}.$detour 목적지나 경유지 버튼을 누르면 순정 내비로 바로 안내해 드려요.")
     }
 
     // ── 졸음 방지 모드 (MR + 싱얼롱 + 퀴즈) ─────────────────────────────────────
 
     fun setBoosterEnabled(enabled: Boolean) {
         val booster = _uiState.value.booster
+        if (enabled && !FeatureFlags.DROWSINESS_BOOSTER) return
         if (enabled == booster.enabled) return
         if (enabled) {
             val song = songs[booster.songIndex % songs.size]
@@ -589,6 +613,7 @@ class MainViewModel(
                 MainViewModel(
                     getNearbySpots = container.getNearbySpots,
                     addWaypoint = container.addWaypoint,
+                    setDestination = container.setDestination,
                     naviHelper = container.naviHelper,
                     vehicleManager = container.vehicleManager,
                     speechHelper = container.speechHelper,

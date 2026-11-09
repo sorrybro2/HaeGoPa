@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 순정 내비 Mock: 가상 경로(목적지 "회사")에 경유지를 메모리로 등록한다.
+ * 순정 내비 Mock: 가상 경로(목적지 "회사")에 경유지를 메모리로 등록하거나, 스팟을 새 목적지로 둔다.
  * 경유지 한도는 실제 Pleos NaviHelper 규격(WaypointIndex.FIRST / SECOND)과 같은 2곳.
  */
 class MockNaviHelperImpl(
@@ -49,6 +49,17 @@ class MockNaviHelperImpl(
         val waypoint = Waypoint(name, GeoPoint(latitude, longitude), WaypointKind.WAYPOINT, order = count + 1)
         _waypoints.value = _waypoints.value + waypoint
         return WaypointResult.AddedAsWaypoint(order = waypoint.order, viaPleos = false)
+    }
+
+    fun isDestination(name: String): Boolean =
+        _waypoints.value.any { it.kind == WaypointKind.DESTINATION && it.name == name }
+
+    /** [목적지]: 새 경로로 바뀌므로 기존 경유지는 지우고 이 스팟만 목적지로 둔다 */
+    @Synchronized
+    override fun setDestinationDetailed(name: String, latitude: Double, longitude: Double): WaypointResult {
+        if (isDestination(name)) return WaypointResult.AlreadyDestination
+        _waypoints.value = listOf(Waypoint(name, GeoPoint(latitude, longitude), WaypointKind.DESTINATION, order = 0))
+        return WaypointResult.SetAsDestination(viaPleos = false)
     }
 
     /** Pleos 게이트웨이가 "목적지로 안내 시작" 결과를 지도에 반영할 때 사용 */

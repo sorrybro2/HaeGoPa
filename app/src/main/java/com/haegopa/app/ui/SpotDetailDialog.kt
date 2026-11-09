@@ -1,5 +1,6 @@
 package com.haegopa.app.ui
 
+import com.haegopa.app.sdk.WaypointKind
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -33,7 +34,8 @@ import com.haegopa.app.ui.theme.ink
 @Composable
 fun SpotDetailDialog(
     spot: Spot,
-    isAdded: Boolean,
+    role: WaypointKind?,
+    onSetDestination: () -> Unit,
     onAddWaypoint: () -> Unit,
     onPlayDocent: () -> Unit,
     onOpenStretching: () -> Unit,
@@ -104,13 +106,22 @@ fun SpotDetailDialog(
 
                     Spacer(Modifier.height(20.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        BigActionButton(
-                            icon = if (isAdded) HaegopaIcons.Added else HaegopaIcons.AddWaypoint,
-                            label = if (isAdded) "경로에 추가됨" else "경유지 추가",
-                            container = if (isAdded) HaegopaColors.Success.copy(alpha = 0.16f) else accent,
-                            content = if (isAdded) HaegopaColors.SuccessInk else HaegopaColors.OnAccent,
-                            enabled = !isAdded,
+                        RouteChoiceButton(
+                            choice = RouteChoice.DESTINATION,
+                            role = role,
+                            accent = accent,
+                            ink = ink,
+                            onClick = onSetDestination,
+                            big = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        RouteChoiceButton(
+                            choice = RouteChoice.WAYPOINT,
+                            role = role,
+                            accent = accent,
+                            ink = ink,
                             onClick = onAddWaypoint,
+                            big = true,
                             modifier = Modifier.weight(1f),
                         )
                         if (spot.hasDocent) {

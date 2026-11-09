@@ -56,6 +56,9 @@ sealed interface WaypointResult {
     data class SetAsDestination(val viaPleos: Boolean) : WaypointResult
 
     data object AlreadyAdded : WaypointResult
+
+    /** 이미 이 스팟으로 길안내 중 */
+    data object AlreadyDestination : WaypointResult
     data class LimitReached(val max: Int) : WaypointResult
     data class Failed(val reason: String) : WaypointResult
 
@@ -75,7 +78,12 @@ interface NaviHelperGateway : MockNaviHelper {
     /** 비동기 SDK 콜백(오류 등)을 사용자 메시지로 전달 */
     val events: SharedFlow<String>
 
+    /** [경유지]: 길안내 중이면 경유지로 끼워 넣고, 경로가 없으면 목적지로 안내를 시작한다 */
     fun addWaypointDetailed(name: String, latitude: Double, longitude: Double): WaypointResult
+
+    /** [목적지]: 진행 중인 경로가 있어도 이 스팟을 새 목적지로 길안내한다 (NaviHelper.requestRoute) */
+    fun setDestinationDetailed(name: String, latitude: Double, longitude: Double): WaypointResult
+
     fun clearWaypoints()
 
     /** 순정 내비 화면으로 전환 (Pleos 에서만 가능, 성공 여부 반환) */
