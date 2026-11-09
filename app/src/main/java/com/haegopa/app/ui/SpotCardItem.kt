@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -36,17 +37,19 @@ import com.haegopa.app.domain.model.Spot
 import com.haegopa.app.domain.model.SpotCategory
 import com.haegopa.app.domain.model.SpotTag
 import com.haegopa.app.domain.util.GeoUtils
+import com.haegopa.app.sdk.WaypointKind
 import com.haegopa.app.ui.theme.HaegopaColors
 import com.haegopa.app.ui.theme.color
 import com.haegopa.app.ui.theme.ink
 
 /**
- * 정차 중 2km 피드 카드: 왼쪽 거리 · 가운데 이름/한 줄 소개/태그 · 오른쪽 [경유지] 원터치 버튼.
+ * 정차 중 2km 피드 카드: 왼쪽 거리 · 가운데 이름/한 줄 소개/태그 · 오른쪽 [목적지] · [경유지] 원터치 버튼.
  */
 @Composable
 fun SpotCardItem(
     spot: Spot,
-    isAdded: Boolean,
+    role: WaypointKind?,
+    onSetDestination: () -> Unit,
     onAddWaypoint: () -> Unit,
     onClick: () -> Unit,
     onPlayDocent: () -> Unit,
@@ -94,18 +97,36 @@ fun SpotCardItem(
                 }
             }
             Spacer(Modifier.width(10.dp))
-            WaypointButton(isAdded = isAdded, accent = spot.category.color(), onClick = onAddWaypoint, tonalInk = ink)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RouteChoiceButton(
+                    choice = RouteChoice.DESTINATION,
+                    role = role,
+                    accent = spot.category.color(),
+                    ink = ink,
+                    onClick = onSetDestination,
+                    modifier = Modifier.width(104.dp),
+                )
+                RouteChoiceButton(
+                    choice = RouteChoice.WAYPOINT,
+                    role = role,
+                    accent = spot.category.color(),
+                    ink = ink,
+                    onClick = onAddWaypoint,
+                    modifier = Modifier.width(104.dp),
+                )
+            }
         }
     }
 }
 
 /**
- * 주행 중 '가장 가까운 곳' 하이라이트 카드 — 큰 거리 숫자 · 큰 이름 · 큰 버튼 2개.
+ * 주행 중 '가장 가까운 곳' 하이라이트 카드 — 큰 거리 숫자 · 큰 이름 · 큰 버튼 3개([목적지] · [경유지] · [다시 듣기]).
  */
 @Composable
 fun DrivingSpotBanner(
     spot: Spot,
-    isAdded: Boolean,
+    role: WaypointKind?,
+    onSetDestination: () -> Unit,
     onAddWaypoint: () -> Unit,
     onRepeat: () -> Unit,
     modifier: Modifier = Modifier,
@@ -141,14 +162,23 @@ fun DrivingSpotBanner(
             }
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BigActionButton(
-                    icon = if (isAdded) HaegopaIcons.Added else HaegopaIcons.AddWaypoint,
-                    label = if (isAdded) "경로에 추가됨" else "경유지 추가",
-                    container = if (isAdded) HaegopaColors.Success.copy(alpha = 0.16f) else accent,
-                    content = if (isAdded) HaegopaColors.SuccessInk else HaegopaColors.OnAccent,
-                    enabled = !isAdded,
+                RouteChoiceButton(
+                    choice = RouteChoice.DESTINATION,
+                    role = role,
+                    accent = accent,
+                    ink = ink,
+                    onClick = onSetDestination,
+                    big = true,
+                    modifier = Modifier.weight(1f),
+                )
+                RouteChoiceButton(
+                    choice = RouteChoice.WAYPOINT,
+                    role = role,
+                    accent = accent,
+                    ink = ink,
                     onClick = onAddWaypoint,
-                    modifier = Modifier.weight(1.35f),
+                    big = true,
+                    modifier = Modifier.weight(1f),
                 )
                 BigActionButton(
                     icon = HaegopaIcons.Speaker,
@@ -156,7 +186,7 @@ fun DrivingSpotBanner(
                     container = HaegopaColors.SurfaceHigher,
                     content = HaegopaColors.TextPrimary,
                     onClick = onRepeat,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(0.9f),
                 )
             }
         }
@@ -164,12 +194,13 @@ fun DrivingSpotBanner(
 }
 
 /**
- * 주행 중 동승자용 간편 행: 거리 · 이름 · 경유지 버튼만 크게. 누르면 음성으로 읽어 준다.
+ * 주행 중 동승자용 간편 행: 거리 · 이름 · [목적지] · [경유지] 버튼만 크게. 누르면 음성으로 읽어 준다.
  */
 @Composable
 fun DrivingSpotRow(
     spot: Spot,
-    isAdded: Boolean,
+    role: WaypointKind?,
+    onSetDestination: () -> Unit,
     onAddWaypoint: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -194,17 +225,43 @@ fun DrivingSpotRow(
             )
             Text(
                 text = spot.name,
-                style = MaterialTheme.typography.titleLarge,
+                // 버튼 두 개 옆이라 한 줄이면 "아침공방 ..."처럼 잘린다 — 두 줄까지 (버튼 높이 64dp 안에 들어감).
+                // 한글은 기본이 글자 단위 줄바꿈("저 / 속 드라이브")이라 띄어쓰기 단위(Phrase, API 33+)로 끊는다.
+                style = MaterialTheme.typography.titleLarge.copy(lineBreak = KoreanPhraseLineBreak),
                 color = HaegopaColors.TextPrimary,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
-            WaypointButton(isAdded = isAdded, accent = spot.category.color(), onClick = onAddWaypoint, compact = true)
+            RouteChoiceButton(
+                choice = RouteChoice.DESTINATION,
+                role = role,
+                accent = spot.category.color(),
+                ink = ink,
+                onClick = onSetDestination,
+                stacked = true,
+                modifier = Modifier.width(80.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            RouteChoiceButton(
+                choice = RouteChoice.WAYPOINT,
+                role = role,
+                accent = spot.category.color(),
+                ink = ink,
+                onClick = onAddWaypoint,
+                stacked = true,
+                modifier = Modifier.width(80.dp),
+            )
         }
     }
 }
+
+private val KoreanPhraseLineBreak = LineBreak(
+    strategy = LineBreak.Strategy.Simple,
+    strictness = LineBreak.Strictness.Strict,
+    wordBreak = LineBreak.WordBreak.Phrase,
+)
 
 @Composable
 private fun DistanceColumn(spot: Spot, ink: Color, width: Dp) {
@@ -279,52 +336,96 @@ private fun Tag(text: String, color: Color, background: Color) {
     )
 }
 
+/** 카드에서 고르는 두 가지 길안내 방식 */
+enum class RouteChoice { DESTINATION, WAYPOINT }
+
 /**
- * 원터치 경유지 버튼. [tonalInk] 를 주면 연한 배경 + 진한 글자(정차 목록용, 카드가 여러 개라 덜 무겁게),
- * 없으면 꽉 찬 강조색(주행 중 큰 버튼용).
+ * 원터치 [목적지] / [경유지] 버튼.
+ * - [목적지]: 꽉 찬 강조색 (주 동작). 이미 이 스팟으로 안내 중이면 "안내 중".
+ * - [경유지]: 연한 배경 + 진한 글자. 이미 경유지면 "추가됨", 이 스팟이 목적지면 비활성.
+ * [stacked] = 아이콘 위 · 글자 아래(주행 목록), [big] = 주행 하이라이트 카드용 큰 가로 버튼.
  */
 @Composable
-fun WaypointButton(
-    isAdded: Boolean,
+fun RouteChoiceButton(
+    choice: RouteChoice,
+    role: WaypointKind?,
     accent: Color,
+    ink: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
-    tonalInk: Color? = null,
+    stacked: Boolean = false,
+    big: Boolean = false,
 ) {
+    val done = when (choice) {
+        RouteChoice.DESTINATION -> role == WaypointKind.DESTINATION
+        RouteChoice.WAYPOINT -> role == WaypointKind.WAYPOINT
+    }
+    // 목적지인 스팟을 다시 경유지로 넣는 건 의미가 없어 막는다
+    val blocked = choice == RouteChoice.WAYPOINT && role == WaypointKind.DESTINATION
+    val primary = choice == RouteChoice.DESTINATION
+    val icon = when {
+        done -> HaegopaIcons.Added
+        primary -> HaegopaIcons.Flag
+        else -> HaegopaIcons.AddWaypoint
+    }
+    val label = when {
+        done && primary -> "안내 중"
+        done -> "추가됨"
+        primary -> "목적지"
+        else -> "경유지"
+    }
     val container = when {
-        isAdded -> HaegopaColors.Success.copy(alpha = 0.14f)
-        tonalInk != null -> accent.copy(alpha = 0.14f)
-        else -> accent
+        done -> HaegopaColors.Success.copy(alpha = 0.14f)
+        blocked -> HaegopaColors.SurfaceHigher
+        primary -> accent
+        else -> accent.copy(alpha = 0.14f)
     }
     val content = when {
-        isAdded -> HaegopaColors.SuccessInk
-        tonalInk != null -> tonalInk
-        else -> HaegopaColors.OnAccent
+        done -> HaegopaColors.SuccessInk
+        blocked -> HaegopaColors.TextTertiary
+        primary -> HaegopaColors.OnAccent
+        else -> ink
     }
+    val border = if (!primary && !done && !blocked) BorderStroke(1.dp, accent.copy(alpha = 0.45f)) else null
     Surface(
         onClick = onClick,
-        enabled = !isAdded,
-        shape = RoundedCornerShape(18.dp),
+        enabled = !done && !blocked,
+        shape = RoundedCornerShape(if (big) 18.dp else 14.dp),
         color = container,
-        border = if (tonalInk != null && !isAdded) BorderStroke(1.dp, accent.copy(alpha = 0.45f)) else null,
-        modifier = modifier
-            .width(if (compact) 76.dp else 80.dp)
-            .heightIn(min = if (compact) 64.dp else 80.dp),
+        border = border,
+        modifier = modifier.heightIn(
+            min = when {
+                big -> 68.dp
+                stacked -> 64.dp
+                else -> 46.dp
+            },
+        ),
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-        ) {
-            HIcon(if (isAdded) HaegopaIcons.Added else HaegopaIcons.AddWaypoint, tint = content, size = 26.dp)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = if (isAdded) "추가됨" else "경유지",
-                style = MaterialTheme.typography.labelLarge,
-                color = content,
-                textAlign = TextAlign.Center,
-            )
+        if (stacked) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+            ) {
+                HIcon(icon, tint = content, size = 24.dp)
+                Spacer(Modifier.height(2.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge, color = content, textAlign = TextAlign.Center, maxLines = 1)
+            }
+        } else {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = if (big) 14.dp else 8.dp),
+            ) {
+                HIcon(icon, tint = content, size = if (big) 24.dp else 20.dp)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = label,
+                    style = if (big) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+                    color = content,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

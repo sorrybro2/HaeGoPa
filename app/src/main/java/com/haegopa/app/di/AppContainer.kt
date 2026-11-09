@@ -6,6 +6,7 @@ import com.haegopa.app.data.MockDataRepository
 import com.haegopa.app.domain.repository.SpotRepository
 import com.haegopa.app.domain.usecase.AddWaypointUseCase
 import com.haegopa.app.domain.usecase.GetNearbySpotsUseCase
+import com.haegopa.app.domain.usecase.SetDestinationUseCase
 import com.haegopa.app.sdk.NaviHelperGateway
 import com.haegopa.app.sdk.SpeechGateway
 import com.haegopa.app.sdk.VehicleGateway
@@ -30,6 +31,7 @@ class AppContainer(context: Context) {
 
     val getNearbySpots: GetNearbySpotsUseCase by lazy { GetNearbySpotsUseCase(spotRepository) }
     val addWaypoint: AddWaypointUseCase by lazy { AddWaypointUseCase(naviHelper) }
+    val setDestination: SetDestinationUseCase by lazy { SetDestinationUseCase(naviHelper) }
 
     /** 런타임 권한(CAR_SPEED 등) 응답 후 차량 센서 재연결 */
     fun onRuntimePermissionsUpdated() {

@@ -1,5 +1,6 @@
 package com.haegopa.app.ui
 
+import com.haegopa.app.FeatureFlags
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -79,6 +80,7 @@ data class DockActions(
     val onSelectCategory: (SpotCategory) -> Unit,
     val onLoadMore: () -> Unit,
     val onRefresh: () -> Unit,
+    val onSetDestination: (Spot) -> Unit,
     val onAddWaypoint: (Spot) -> Unit,
     val onOpenDetail: (Spot) -> Unit,
     val onPlayDocent: (Spot) -> Unit,
@@ -90,7 +92,7 @@ data class DockActions(
 
 /**
  * 와이드 화면 오른쪽 '해고파' 도크.
- * 위에서부터 브랜드·주행 상태 / 졸음 방지 모드 / 먹·놀·쉬 탭 / 스팟 목록(정차: 전체 카드, 주행: 동승자용 큰 글씨 목록) / 연동 상태.
+ * 위에서부터 브랜드·주행 상태 / 졸음 방지 모드(FeatureFlags 로 끌 수 있음) / 먹·놀·쉬 탭 / 스팟 목록(정차: 전체 카드, 주행: 동승자용 큰 글씨 목록) / 연동 상태.
  */
 @Composable
 fun HaegopaDockWidget(
@@ -108,8 +110,10 @@ fun HaegopaDockWidget(
             ) {
                 DockHeader(state)
                 Spacer(Modifier.height(14.dp))
-                BoosterCard(enabled = state.booster.enabled, onToggle = actions.onToggleBooster)
-                Spacer(Modifier.height(12.dp))
+                if (FeatureFlags.DROWSINESS_BOOSTER) {
+                    BoosterCard(enabled = state.booster.enabled, onToggle = actions.onToggleBooster)
+                    Spacer(Modifier.height(12.dp))
+                }
                 CategoryTabs(selected = state.selectedCategory, onSelect = actions.onSelectCategory)
                 AnimatedVisibility(visible = state.fatigueNudgeVisible) {
                     FatigueNudge(
@@ -398,7 +402,8 @@ private fun SpotFeed(state: MainUiState, actions: DockActions) {
         items(feed.items, key = { it.id }) { spot ->
             SpotCardItem(
                 spot = spot,
-                isAdded = state.isAdded(spot),
+                role = state.routeRole(spot),
+                onSetDestination = { actions.onSetDestination(spot) },
                 onAddWaypoint = { actions.onAddWaypoint(spot) },
                 onClick = { actions.onOpenDetail(spot) },
                 onPlayDocent = { actions.onPlayDocent(spot) },
@@ -519,7 +524,8 @@ private fun DrivingFeed(state: MainUiState, actions: DockActions) {
             item(key = "top-${top.id}") {
                 DrivingSpotBanner(
                     spot = top,
-                    isAdded = state.isAdded(top),
+                    role = state.routeRole(top),
+                    onSetDestination = { actions.onSetDestination(top) },
                     onAddWaypoint = { actions.onAddWaypoint(top) },
                     onRepeat = actions.onRepeatAnnouncement,
                 )
@@ -527,7 +533,8 @@ private fun DrivingFeed(state: MainUiState, actions: DockActions) {
             items(spots.drop(1), key = { it.id }) { spot ->
                 DrivingSpotRow(
                     spot = spot,
-                    isAdded = state.isAdded(spot),
+                    role = state.routeRole(spot),
+                    onSetDestination = { actions.onSetDestination(spot) },
                     onAddWaypoint = { actions.onAddWaypoint(spot) },
                     // 주행 중에는 상세 화면 대신 음성으로 읽어 준다 (ViewModel.openDetail)
                     onClick = { actions.onOpenDetail(spot) },
@@ -554,7 +561,13 @@ private fun DrivingFeed(state: MainUiState, actions: DockActions) {
 @Composable
 private fun SdkStatusFooter(sdk: SdkSummary) {
     var expanded by remember { mutableStateOf(false) }
-    val items = listOf("내비" to sdk.navi, "차량" to sdk.vehicle, "음성합성" to sdk.tts, "음성인식" to sdk.stt)
+    // 졸음 방지(퀴즈)를 끄면 STT 를 쓰지 않으므로 음성인식 상태는 숨긴다
+    val items = listOfNotNull(
+        "내비" to sdk.navi,
+        "차량" to sdk.vehicle,
+        "음성합성" to sdk.tts,
+        ("음성인식" to sdk.stt).takeIf { FeatureFlags.DROWSINESS_BOOSTER },
+    )
     Column(Modifier.fillMaxWidth()) {
         HorizontalDivider(color = HaegopaColors.Outline)
         Row(

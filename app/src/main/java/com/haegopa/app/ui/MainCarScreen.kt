@@ -69,7 +69,7 @@ import kotlin.math.min
  * │  └ 졸음 방지 모드 ON 이면 위쪽에 싱얼롱 가사 패널   │                 │
  * └────────────────────────────────────────────────┴─────────────────┘
  * Pleos Connect 에서는 이 화면이 차량 패널 오른쪽 메인 영역(순정 내비와 같은 자리)에 열린다.
- * 실제 길안내는 순정 내비가 맡고, 해고파는 NaviHelper 로 경유지를 보낸다. 세로 화면에서는 위(지도) / 아래(도크)로 쌓는다.
+ * 실제 길안내는 순정 내비가 맡고, 해고파는 NaviHelper 로 목적지 · 경유지를 보낸다. 세로 화면에서는 위(지도) / 아래(도크)로 쌓는다.
  */
 @Composable
 fun MainCarScreen(viewModel: MainViewModel) {
@@ -90,6 +90,7 @@ fun MainCarScreen(viewModel: MainViewModel) {
             onSelectCategory = viewModel::selectCategory,
             onLoadMore = { viewModel.loadNextPage() },
             onRefresh = viewModel::refreshFeed,
+            onSetDestination = viewModel::onSetDestination,
             onAddWaypoint = viewModel::onAddWaypoint,
             onOpenDetail = viewModel::openDetail,
             onPlayDocent = viewModel::playDocent,
@@ -154,7 +155,8 @@ fun MainCarScreen(viewModel: MainViewModel) {
     state.detailSpot?.let { spot ->
         SpotDetailDialog(
             spot = spot,
-            isAdded = state.isAdded(spot),
+            role = state.routeRole(spot),
+            onSetDestination = { viewModel.onSetDestination(spot) },
             onAddWaypoint = { viewModel.onAddWaypoint(spot) },
             onPlayDocent = { viewModel.playDocent(spot) },
             onOpenStretching = { viewModel.openStretching(spot.name) },
@@ -313,7 +315,7 @@ private fun MapTitleChip(category: SpotCategory, count: Int, radiusMeters: Int) 
     }
 }
 
-/** 순정 내비와의 연결 상태 (경유지가 어디로 들어가는지 알려 준다) */
+/** 순정 내비와의 연결 상태 (목적지 · 경유지가 어디로 들어가는지 알려 준다) */
 private fun naviLinkLabel(navi: SdkStatus): Pair<String, Color> = when (navi.backend) {
     SdkBackend.PLEOS -> "Pleos 내비 연동" to HaegopaColors.Success
     SdkBackend.ANDROID -> "내비 연동" to HaegopaColors.Info
@@ -527,7 +529,7 @@ private fun RouteSummaryCard(
             if (stops.isEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "카드의 [경유지]를 누르면 내비 경로에 바로 들어가요",
+                    text = "카드의 [목적지] · [경유지]로 순정 내비에 바로 보내요",
                     style = MaterialTheme.typography.labelMedium,
                     color = HaegopaColors.TextTertiary,
                 )
