@@ -3,8 +3,6 @@ package com.haegopa.app.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -65,8 +63,7 @@ import kotlin.math.min
 /**
  * 가로 화면 분할 구조
  * ┌──────────────────── 63~66% ────────────────────┬──── 34~37% ────┐
- * │ 해고파 주변 스팟 지도 (반경 2km 핀 · 내 경로)      │ 해고파 도크      │
- * │  └ 졸음 방지 모드 ON 이면 위쪽에 싱얼롱 가사 패널   │                 │
+ * │ 해고파 주변 스팟 지도 (반경 핀 · 내 경로 · 자막)   │ 해고파 도크      │
  * └────────────────────────────────────────────────┴─────────────────┘
  * Pleos Connect 에서는 이 화면이 차량 패널 오른쪽 메인 영역(순정 내비와 같은 자리)에 열린다.
  * 실제 길안내는 순정 내비가 맡고, 해고파는 NaviHelper 로 목적지 · 경유지를 보낸다. 세로 화면에서는 위(지도) / 아래(도크)로 쌓는다.
@@ -86,7 +83,6 @@ fun MainCarScreen(viewModel: MainViewModel) {
 
     val dockActions = remember(viewModel) {
         DockActions(
-            onToggleBooster = viewModel::setBoosterEnabled,
             onSelectCategory = viewModel::selectCategory,
             onLoadMore = { viewModel.loadNextPage() },
             onRefresh = viewModel::refreshFeed,
@@ -178,16 +174,6 @@ fun MainCarScreen(viewModel: MainViewModel) {
             onDismiss = viewModel::closeCustomRadius,
         )
     }
-    state.quiz?.let { quiz ->
-        QuizDialog(
-            quiz = quiz,
-            sttStatus = state.sdk.stt,
-            onAnswerByVoice = viewModel::answerByVoice,
-            onSimulateAnswer = viewModel::simulateVoiceAnswer,
-            onRestart = viewModel::startQuiz,
-            onClose = viewModel::closeQuiz,
-        )
-    }
 }
 
 @Composable
@@ -229,25 +215,6 @@ private fun MapArea(
                     onSelect = viewModel::selectRadius,
                     onCustom = viewModel::openCustomRadius,
                 )
-            }
-            AnimatedVisibility(
-                visible = state.booster.enabled,
-                enter = slideInVertically { -it } + fadeIn(),
-                exit = slideOutVertically { -it } + fadeOut(),
-            ) {
-                val song = state.booster.song
-                val silent by viewModel.mrSilent.collectAsStateWithLifecycle()
-                if (song != null) {
-                    SingAlongModal(
-                        song = song,
-                        positionMs = viewModel.mrPositionMs,
-                        silent = silent,
-                        driving = state.isDriving,
-                        onNextSong = viewModel::nextSong,
-                        onStartQuiz = viewModel::startQuiz,
-                        onTurnOff = { viewModel.setBoosterEnabled(false) },
-                    )
-                }
             }
             CaptionBubble(caption)
         }
@@ -320,7 +287,7 @@ private fun naviLinkLabel(navi: SdkStatus): Pair<String, Color> = when (navi.bac
     SdkBackend.PLEOS -> "Pleos 내비 연동" to HaegopaColors.Success
     SdkBackend.ANDROID -> "내비 연동" to HaegopaColors.Info
     SdkBackend.MOCK -> "내비 데모 모드" to HaegopaColors.Neutral
-    SdkBackend.CONNECTING -> "내비 연결 중" to HaegopaColors.Booster
+    SdkBackend.CONNECTING -> "내비 연결 중" to HaegopaColors.Amber
 }
 
 /** TTS 로 읽은 문장을 자막으로도 보여 준다 (소리를 못 들은 경우 · 시연 영상용) */
@@ -345,7 +312,7 @@ private fun CaptionBubble(caption: SpeechCaption?) {
                     .widthIn(max = 640.dp)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
-                HIcon(HaegopaIcons.Wave, tint = HaegopaColors.Booster, size = 20.dp)
+                HIcon(HaegopaIcons.Wave, tint = HaegopaColors.Amber, size = 20.dp)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = caption?.text.orEmpty(),
@@ -378,7 +345,7 @@ private fun DemoDrivePanel(
                 Text(
                     text = "$speedKmh",
                     style = MaterialTheme.typography.headlineMedium,
-                    color = if (speedKmh > 0) HaegopaColors.BoosterInk else HaegopaColors.TextPrimary,
+                    color = if (speedKmh > 0) HaegopaColors.AmberInk else HaegopaColors.TextPrimary,
                 )
                 Text(
                     text = " km/h",
@@ -394,7 +361,7 @@ private fun DemoDrivePanel(
                         color = if (gear.impliesMotion) HaegopaColors.OnAccent else HaegopaColors.TextPrimary,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (gear.impliesMotion) HaegopaColors.Booster else HaegopaColors.SurfaceHigher)
+                            .background(if (gear.impliesMotion) HaegopaColors.Amber else HaegopaColors.SurfaceHigher)
                             .padding(horizontal = 9.dp, vertical = 2.dp),
                     )
                 }
@@ -449,7 +416,7 @@ private fun DemoChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
-        color = if (selected) HaegopaColors.Booster else HaegopaColors.SurfaceHigher,
+        color = if (selected) HaegopaColors.Amber else HaegopaColors.SurfaceHigher,
         modifier = Modifier.heightIn(min = 48.dp),
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -570,7 +537,7 @@ private fun RouteNumber(order: Int) {
         modifier = Modifier
             .size(20.dp)
             .clip(CircleShape)
-            .background(HaegopaColors.Booster),
+            .background(HaegopaColors.Amber),
     ) {
         Text("$order", style = MaterialTheme.typography.labelSmall, color = HaegopaColors.OnAccent)
     }

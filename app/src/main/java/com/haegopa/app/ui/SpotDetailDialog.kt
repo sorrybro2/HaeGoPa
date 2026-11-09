@@ -96,7 +96,7 @@ fun SpotDetailDialog(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     HIcon(HaegopaIcons.Docent, tint = ink, size = 20.dp)
                                     Spacer(Modifier.width(6.dp))
-                                    Text("TTS 도슨트", style = MaterialTheme.typography.labelLarge, color = ink)
+                                    Text("음성 소개", style = MaterialTheme.typography.labelLarge, color = ink)
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 Text(script, style = MaterialTheme.typography.bodyMedium, color = HaegopaColors.TextSecondary)
@@ -127,7 +127,7 @@ fun SpotDetailDialog(
                         if (spot.hasDocent) {
                             BigActionButton(
                                 icon = HaegopaIcons.Docent,
-                                label = "도슨트 듣기",
+                                label = "소개 듣기",
                                 container = HaegopaColors.SurfaceHigher,
                                 content = HaegopaColors.TextPrimary,
                                 onClick = onPlayDocent,

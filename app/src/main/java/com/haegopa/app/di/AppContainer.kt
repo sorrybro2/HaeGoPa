@@ -1,7 +1,6 @@
 package com.haegopa.app.di
 
 import android.content.Context
-import com.haegopa.app.audio.MrSynthPlayer
 import com.haegopa.app.data.MockDataRepository
 import com.haegopa.app.domain.repository.SpotRepository
 import com.haegopa.app.domain.usecase.AddWaypointUseCase
@@ -27,7 +26,6 @@ class AppContainer(context: Context) {
     val speechHelper: SpeechGateway by lazy { PleosSpeechGateway(appContext) }
 
     val spotRepository: SpotRepository by lazy { MockDataRepository() }
-    val mrPlayer: MrSynthPlayer by lazy { MrSynthPlayer(appContext) }
 
     val getNearbySpots: GetNearbySpotsUseCase by lazy { GetNearbySpotsUseCase(spotRepository) }
     val addWaypoint: AddWaypointUseCase by lazy { AddWaypointUseCase(naviHelper) }

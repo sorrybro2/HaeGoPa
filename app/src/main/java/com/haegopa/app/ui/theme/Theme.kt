@@ -15,7 +15,7 @@ private fun schemeOf(p: HaegopaPalette) = if (p.isDark) {
     darkColorScheme(
         primary = HaegopaColors.Brand,
         onPrimary = HaegopaColors.OnAccent,
-        secondary = HaegopaColors.Booster,
+        secondary = HaegopaColors.Amber,
         onSecondary = HaegopaColors.OnAccent,
         background = p.background,
         onBackground = p.textPrimary,
@@ -30,7 +30,7 @@ private fun schemeOf(p: HaegopaPalette) = if (p.isDark) {
     lightColorScheme(
         primary = HaegopaColors.Brand,
         onPrimary = HaegopaColors.OnAccent,
-        secondary = HaegopaColors.Booster,
+        secondary = HaegopaColors.Amber,
         onSecondary = HaegopaColors.OnAccent,
         background = p.background,
         onBackground = p.textPrimary,

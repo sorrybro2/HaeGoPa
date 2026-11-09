@@ -91,7 +91,7 @@ fun SpotCardItem(
                 if (spot.hasDocent || spot.supportsStretching) {
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (spot.hasDocent) MiniActionChip(HaegopaIcons.Docent, "도슨트 듣기", ink, onPlayDocent)
+                        if (spot.hasDocent) MiniActionChip(HaegopaIcons.Docent, "소개 듣기", ink, onPlayDocent)
                         if (spot.supportsStretching) MiniActionChip(HaegopaIcons.Stretch, "1분 스트레칭", ink, onOpenStretching)
                     }
                 }
@@ -314,10 +314,15 @@ fun TagRow(spot: Spot, ink: Color, max: Int = 3) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // 종류(맛집 · 공원 · 사우나 …)는 맨 앞에 카테고리 색으로 채워서, 나머지 특징 태그와 구분한다
+        val kind = spot.kind
+        if (kind != null) {
+            Tag(text = kind.label, color = HaegopaColors.OnAccent, background = spot.category.color())
+        }
         if (spot.category == SpotCategory.EAT) {
             Tag(text = "경로 +${spot.detourMinutes}분", color = HaegopaColors.TextSecondary, background = HaegopaColors.SurfaceHigher)
         }
-        spot.tags.take(max).forEach { tag: SpotTag ->
+        spot.tags.filter { it != kind }.take(max - 1).forEach { tag: SpotTag ->
             Tag(text = tag.label, color = ink, background = ink.copy(alpha = 0.10f))
         }
     }

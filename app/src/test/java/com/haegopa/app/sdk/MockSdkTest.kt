@@ -12,9 +12,9 @@ class MockSdkTest {
     @Test
     fun `navi helper accepts two waypoints like Pleos WaypointIndex FIRST and SECOND`() {
         val navi = MockNaviHelperImpl()
-        assertTrue(navi.addWaypoint("버거 스테이션 DT", 37.39, 127.11))
-        assertEquals(WaypointResult.AlreadyAdded, navi.addWaypointDetailed("버거 스테이션 DT", 37.39, 127.11))
-        assertTrue(navi.addWaypoint("솔바람 졸음쉼터", 37.40, 127.11))
+        assertTrue(navi.addWaypoint("골목 손칼국수", 37.39, 127.11))
+        assertEquals(WaypointResult.AlreadyAdded, navi.addWaypointDetailed("골목 손칼국수", 37.39, 127.11))
+        assertTrue(navi.addWaypoint("옛 철길 숲길", 37.40, 127.11))
         assertFalse(navi.addWaypoint("노을 전망 언덕", 37.41, 127.10))
         assertEquals(listOf(1, 2), navi.waypoints.value.map { it.order })
     }
@@ -22,8 +22,8 @@ class MockSdkTest {
     @Test
     fun `clearing waypoints keeps the destination`() {
         val navi = MockNaviHelperImpl()
-        navi.recordDestination("하늘정원 휴게소", 37.39, 127.12)
-        navi.addWaypoint("버거 스테이션 DT", 37.39, 127.11)
+        navi.recordDestination("강변 잔디공원", 37.39, 127.12)
+        navi.addWaypoint("골목 손칼국수", 37.39, 127.11)
         navi.clearWaypoints()
         assertEquals(listOf(WaypointKind.DESTINATION), navi.waypoints.value.map { it.kind })
     }
@@ -31,22 +31,22 @@ class MockSdkTest {
     @Test
     fun `setting a destination replaces the whole route and blocks duplicates`() {
         val navi = MockNaviHelperImpl()
-        navi.addWaypoint("버거 스테이션 DT", 37.39, 127.11)
+        navi.addWaypoint("골목 손칼국수", 37.39, 127.11)
         assertEquals(
             WaypointResult.SetAsDestination(viaPleos = false),
-            navi.setDestinationDetailed("샐러드랩 테이크아웃", 37.40, 127.10),
+            navi.setDestinationDetailed("온기 베이커리", 37.40, 127.10),
         )
-        assertEquals(listOf("샐러드랩 테이크아웃"), navi.waypoints.value.map { it.name })
+        assertEquals(listOf("온기 베이커리"), navi.waypoints.value.map { it.name })
         assertEquals(listOf(WaypointKind.DESTINATION), navi.waypoints.value.map { it.kind })
-        assertEquals(WaypointResult.AlreadyDestination, navi.setDestinationDetailed("샐러드랩 테이크아웃", 37.40, 127.10))
+        assertEquals(WaypointResult.AlreadyDestination, navi.setDestinationDetailed("온기 베이커리", 37.40, 127.10))
     }
 
     @Test
     fun `waypoints can be added on top of a chosen destination`() {
         val navi = MockNaviHelperImpl()
-        navi.setDestinationDetailed("하늘정원 휴게소", 37.39, 127.12)
-        assertEquals(WaypointResult.AddedAsWaypoint(order = 1, viaPleos = false), navi.addWaypointDetailed("버거 스테이션 DT", 37.39, 127.11))
-        assertEquals(WaypointResult.AlreadyAdded, navi.addWaypointDetailed("하늘정원 휴게소", 37.39, 127.12))
+        navi.setDestinationDetailed("강변 잔디공원", 37.39, 127.12)
+        assertEquals(WaypointResult.AddedAsWaypoint(order = 1, viaPleos = false), navi.addWaypointDetailed("골목 손칼국수", 37.39, 127.11))
+        assertEquals(WaypointResult.AlreadyAdded, navi.addWaypointDetailed("강변 잔디공원", 37.39, 127.12))
         assertEquals(
             listOf(WaypointKind.DESTINATION, WaypointKind.WAYPOINT),
             navi.waypoints.value.map { it.kind },

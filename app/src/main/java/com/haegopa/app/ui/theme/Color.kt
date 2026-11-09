@@ -24,7 +24,7 @@ data class HaegopaPalette(
     val textSecondary: Color,
     val textTertiary: Color,
     /** 밝은 배경 위에서도 읽히는 강조 글자색 */
-    val boosterInk: Color,
+    val amberInk: Color,
     val eatInk: Color,
     val playInk: Color,
     val restInk: Color,
@@ -60,7 +60,7 @@ val DarkPalette = HaegopaPalette(
     textPrimary = Color(0xFFF3F5F9),
     textSecondary = Color(0xFFA4ADBB),
     textTertiary = Color(0xFF6C7685),
-    boosterInk = Color(0xFFFFD23F),
+    amberInk = Color(0xFFFFD23F),
     eatInk = Color(0xFFFF9A52),
     playInk = Color(0xFFA690FF),
     restInk = Color(0xFF3DD6C2),
@@ -93,7 +93,7 @@ val LightPalette = HaegopaPalette(
     textPrimary = Color(0xFF111418),
     textSecondary = Color(0xFF4E5866),
     textTertiary = Color(0xFF8B95A3),
-    boosterInk = Color(0xFFB07400),
+    amberInk = Color(0xFFB07400),
     eatInk = Color(0xFFD45A10),
     playInk = Color(0xFF6A4CE0),
     restInk = Color(0xFF0B8C7B),
@@ -128,8 +128,7 @@ object HaegopaColors {
     val Eat = Color(0xFFFF8A3D)
     val Play = Color(0xFF8B6CFF)
     val Rest = Color(0xFF2EC4B6)
-    val Booster = Color(0xFFFFC83D)
-    val BoosterDeep = Color(0xFFFF9F2E)
+    val Amber = Color(0xFFFFC83D)
     val Success = Color(0xFF2FBF71)
     val Danger = Color(0xFFF04F54)
     val Info = Color(0xFF3D8BFF)
@@ -147,7 +146,7 @@ object HaegopaColors {
     val TextPrimary: Color @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.textPrimary
     val TextSecondary: Color @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.textSecondary
     val TextTertiary: Color @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.textTertiary
-    val BoosterInk: Color @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.boosterInk
+    val AmberInk: Color @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.amberInk
     val SuccessInk: Color @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.successInk
     val DangerInk: Color @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.dangerInk
     val IsDark: Boolean @Composable @ReadOnlyComposable get() = LocalHaegopaPalette.current.isDark
@@ -177,5 +176,5 @@ fun SdkBackend.color(): Color = when (this) {
     SdkBackend.PLEOS -> HaegopaColors.Success
     SdkBackend.ANDROID -> HaegopaColors.Info
     SdkBackend.MOCK -> HaegopaColors.Neutral
-    SdkBackend.CONNECTING -> HaegopaColors.Booster
+    SdkBackend.CONNECTING -> HaegopaColors.Amber
 }

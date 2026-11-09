@@ -2,7 +2,7 @@ package com.haegopa.app.domain.model
 
 /**
  * 차량 안전 규격(Driver Distraction) 분기 기준.
- * - PARKED : Speed == 0 km/h → 2km 무한 스크롤, 상세, 도슨트, 스트레칭 가이드 등 전체 기능
+ * - PARKED : Speed == 0 km/h → 2km 무한 스크롤, 상세, 소개 듣기(도슨트), 스트레칭 가이드 등 전체 기능
  * - DRIVING: Speed  > 0 km/h → 동승자용 큰 글씨 간편 목록(스크롤 가능, 개수 상한), 가장 가까운 곳 음성 안내,
  *                              상세·스트레칭(영상) 같은 정차 전용 화면은 잠금
  */

@@ -2,6 +2,7 @@ package com.haegopa.app.data
 
 import com.haegopa.app.domain.model.GeoPoint
 import com.haegopa.app.domain.model.SpotCategory
+import com.haegopa.app.domain.model.SpotTag
 import com.haegopa.app.domain.repository.SpotRepository
 import com.haegopa.app.domain.util.GeoUtils
 import kotlinx.coroutines.test.runTest
@@ -54,9 +55,35 @@ class MockDataRepositoryTest {
     fun `eat spots respect the 5 minute detour rule and radius`() = runTest {
         val items = repository.getNearbySpots(SpotCategory.EAT, origin, 0, 100).items
         assertTrue(items.all { it.detourMinutes <= MockDataRepository.MAX_EAT_DETOUR_MINUTES })
-        assertFalse(items.any { it.name == "칼국수 본점" }) // 우회 7분
+        assertFalse(items.any { it.name == "한정식 본가" }) // 우회 7분
         assertFalse(items.any { it.name == "수제버거 하우스" }) // 2.15km
     }
+
+    @Test
+    fun `every spot leads with a kind that fits its category`() = runTest {
+        val allowed = mapOf(
+            SpotCategory.EAT to setOf(SpotTag.RESTAURANT, SpotTag.CAFE, SpotTag.DESSERT),
+            SpotCategory.PLAY to setOf(SpotTag.PARK, SpotTag.DEPARTMENT_STORE, SpotTag.THEME_PARK, SpotTag.ATTRACTION, SpotTag.LANDMARK),
+            SpotCategory.REST to setOf(SpotTag.TRAIL, SpotTag.PARK, SpotTag.BATHHOUSE, SpotTag.SAUNA, SpotTag.MASSAGE),
+        )
+        SpotCategory.entries.forEach { category ->
+            allSpots(category).forEach { spot ->
+                assertTrue("${spot.name}: 첫 태그가 종류여야 함", spot.tags.first().isKind)
+                assertTrue("${spot.name}: ${spot.kind}", spot.kind in allowed.getValue(category))
+            }
+        }
+    }
+
+    @Test
+    fun `stretching is offered only on rest trails and parks`() = runTest {
+        val rest = allSpots(SpotCategory.REST)
+        assertTrue(rest.filter { it.kind == SpotTag.TRAIL || it.kind == SpotTag.PARK }.all { it.supportsStretching })
+        assertTrue(rest.filter { it.kind == SpotTag.SAUNA || it.kind == SpotTag.MASSAGE || it.kind == SpotTag.BATHHOUSE }.none { it.supportsStretching })
+        assertTrue(allSpots(SpotCategory.PLAY).none { it.supportsStretching }) // 놀고파 공원은 스트레칭 대상 아님
+    }
+
+    private suspend fun allSpots(category: SpotCategory) =
+        repository.getNearbySpots(category, origin, 0, 100, radiusMeters = 20_000).items
 
     @Test
     fun `distance field matches generated coordinates`() = runTest {
@@ -77,8 +104,13 @@ class MockDataRepositoryTest {
     }
 
     @Test
-    fun `play spots provide a TTS docent script`() = runTest {
-        val items = repository.getNearbySpots(SpotCategory.PLAY, origin, 0, 100).items
-        assertTrue(items.all { it.hasDocent })
+    fun `docent is provided exactly for play attractions and landmarks`() = runTest {
+        val play = allSpots(SpotCategory.PLAY)
+        val sights = play.filter { it.kind == SpotTag.ATTRACTION || it.kind == SpotTag.LANDMARK }
+        assertTrue(sights.isNotEmpty())
+        assertTrue(sights.all { it.hasDocent })
+        assertTrue((play - sights.toSet()).none { it.hasDocent })
+        assertTrue(allSpots(SpotCategory.EAT).none { it.hasDocent })
+        assertTrue(allSpots(SpotCategory.REST).none { it.hasDocent })
     }
 }
