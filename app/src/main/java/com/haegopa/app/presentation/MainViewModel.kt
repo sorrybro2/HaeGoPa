@@ -5,17 +5,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.haegopa.app.FeatureFlags
-import com.haegopa.app.audio.MrSynthPlayer
-import com.haegopa.app.data.QuizBank
-import com.haegopa.app.data.SingAlongCatalog
 import com.haegopa.app.di.AppContainer
 import com.haegopa.app.domain.model.DriveMode
 import com.haegopa.app.domain.model.GeoPoint
-import com.haegopa.app.domain.model.QuizAnswerParser
-import com.haegopa.app.domain.model.QuizQuestion
 import com.haegopa.app.domain.model.SearchRadius
-import com.haegopa.app.domain.model.SingAlongSong
 import com.haegopa.app.domain.model.Spot
 import com.haegopa.app.domain.model.SpotCategory
 import com.haegopa.app.domain.usecase.AddWaypointUseCase
@@ -47,9 +40,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 해고파 메인 화면 ViewModel (MVVM · 단방향 데이터 흐름).
- * - 먹·놀·쉬 2km 무한 피드 / 원터치 목적지 안내 · 경유지 추가 (순정 내비)
- * - 차속에 따른 정차·주행 UI 분기 (Driver Distraction)
- * - 졸음 방지 모드: 합성 MR + 싱얼롱 가사 + TTS/STT 1분 상식 퀴즈 ([FeatureFlags.DROWSINESS_BOOSTER] 로 끌 수 있음)
+ * - 먹·놀·쉬 반경 거리순 무한 피드 / 원터치 [목적지] · [경유지] (순정 내비 NaviHelper)
+ * - 차속에 따른 정차·주행 UI 분기 (Driver Distraction) · 주행 중 TTS 음성 안내
+ * - 장시간 운전 피로 알림 → 쉬고파
  */
 class MainViewModel(
     private val getNearbySpots: GetNearbySpotsUseCase,
@@ -58,9 +51,6 @@ class MainViewModel(
     private val naviHelper: NaviHelperGateway,
     private val vehicleManager: VehicleGateway,
     private val speechHelper: SpeechGateway,
-    private val mrPlayer: MrSynthPlayer,
-    private val songs: List<SingAlongSong> = SingAlongCatalog.songs,
-    private val quizBank: List<QuizQuestion> = QuizBank.questions,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -69,15 +59,8 @@ class MainViewModel(
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
 
-    /** 가사 싱크용 재생 위치 — 자주 바뀌므로 uiState 와 분리해 SingAlong 영역만 재구성한다 */
-    val mrPositionMs: StateFlow<Long> = mrPlayer.positionMs
-
-    /** 오디오 출력 불가 시 가사만 흐르는 무음 모드 여부 */
-    val mrSilent: StateFlow<Boolean> = mrPlayer.silentMode
     val caption: StateFlow<SpeechCaption?> = speechHelper.caption
 
-    private var quizTimerJob: Job? = null
-    private var quizStepJob: Job? = null
     private var fatigueAnnounced = false
 
     init {
@@ -101,9 +84,8 @@ class MainViewModel(
                 naviHelper.status,
                 vehicleManager.status,
                 speechHelper.ttsStatus,
-                speechHelper.sttStatus,
                 vehicleManager.speedSource,
-            ) { navi, vehicle, tts, stt, source -> SdkSummary(navi, vehicle, tts, stt, source) }
+            ) { navi, vehicle, tts, source -> SdkSummary(navi, vehicle, tts, source) }
                 .collect { summary -> _uiState.update { it.copy(sdk = summary) } }
         }
         viewModelScope.launch {
@@ -173,7 +155,7 @@ class MainViewModel(
         }
         if (overThreshold && !fatigueAnnounced) {
             fatigueAnnounced = true
-            speak("${minutes / 60}시간 넘게 운전 중이에요. 가까운 쉼터에서 잠깐 쉬어 가세요.")
+            speak("${minutes / 60}시간 넘게 운전 중이에요. 쉬고파에서 가까운 쉴 곳을 찾아 잠깐 쉬어 가세요.")
         }
     }
 
@@ -336,7 +318,7 @@ class MainViewModel(
         _messages.tryEmit("경유지를 모두 지웠어요")
     }
 
-    // ── 상세 · 도슨트 · 스트레칭 (정차 중 전용 인터랙션) ─────────────────────────
+    // ── 상세 · 소개 듣기(도슨트) · 스트레칭 (정차 중 전용 인터랙션) ─────────────────────────
 
     fun openDetail(spot: Spot) {
         if (_uiState.value.isDriving) {
@@ -352,7 +334,7 @@ class MainViewModel(
 
     fun playDocent(spot: Spot) {
         val script = spot.docentScript ?: return
-        speak("${spot.name} 도슨트. $script")
+        speak("${spot.name} 소개. $script")
     }
 
     fun openStretching(placeName: String?) {
@@ -406,9 +388,9 @@ class MainViewModel(
                 } else {
                     "주행 중에는 큰 글씨 목록으로 바꿨어요."
                 }
-                if (state.quiz == null) speak(script)
+                speak(script)
             }
-            DriveMode.PARKED -> _messages.tryEmit("정차 중 — 상세 정보 · 도슨트 · 스트레칭을 다시 열 수 있어요")
+            DriveMode.PARKED -> _messages.tryEmit("정차 중 — 상세 정보 · 소개 듣기 · 스트레칭을 다시 열 수 있어요")
         }
     }
 
@@ -427,163 +409,12 @@ class MainViewModel(
         speak("${spot.category.label} 추천, ${GeoUtils.spokenDistance(spot.distanceMeters)} 거리의 ${spot.name}.$detour 목적지나 경유지 버튼을 누르면 순정 내비로 바로 안내해 드려요.")
     }
 
-    // ── 졸음 방지 모드 (MR + 싱얼롱 + 퀴즈) ─────────────────────────────────────
-
-    fun setBoosterEnabled(enabled: Boolean) {
-        val booster = _uiState.value.booster
-        if (enabled && !FeatureFlags.DROWSINESS_BOOSTER) return
-        if (enabled == booster.enabled) return
-        if (enabled) {
-            val song = songs[booster.songIndex % songs.size]
-            mrPlayer.start(song)
-            _uiState.update { it.copy(booster = it.booster.copy(enabled = true, song = song)) }
-            speak("졸음 방지 모드를 켰어요. 보컬을 뺀 노래방 반주로 바꿨어요. 화면 가사를 보며 크게 따라 불러 보세요!")
-        } else {
-            closeQuiz()
-            mrPlayer.stop()
-            // song 은 남겨 두어 패널이 사라지는 애니메이션 동안에도 가사가 보이게 한다
-            _uiState.update { it.copy(booster = it.booster.copy(enabled = false)) }
-            speak("졸음 방지 모드를 껐어요. 오늘도 안전 운전하세요!")
-        }
-    }
-
-    fun nextSong() {
-        val booster = _uiState.value.booster
-        if (!booster.enabled) return
-        val nextIndex = (booster.songIndex + 1) % songs.size
-        val song = songs[nextIndex]
-        mrPlayer.start(song)
-        _uiState.update { it.copy(booster = it.booster.copy(songIndex = nextIndex, song = song)) }
-        _messages.tryEmit("다음 곡: ${song.title}")
-    }
-
-    fun startQuiz() {
-        closeQuiz()
-        mrPlayer.setDucked(true)
-        _uiState.update { it.copy(quiz = QuizUiState(deck = quizBank.shuffled())) }
-        askCurrentQuestion(intro = true)
-        quizTimerJob = viewModelScope.launch {
-            while (isActive) {
-                delay(1_000)
-                val quiz = _uiState.value.quiz ?: break
-                if (quiz.phase == QuizPhase.FINISHED) break
-                val remaining = quiz.remainingSeconds - 1
-                if (remaining <= 0) {
-                    finishQuiz()
-                    break
-                }
-                _uiState.update { it.copy(quiz = it.quiz?.copy(remainingSeconds = remaining)) }
-            }
-        }
-    }
-
-    /** 🎙️ 말로 답하기 → MockSpeechHelper.startVoiceRecognition (Pleos STT / Android STT / 시뮬레이션) */
-    fun answerByVoice() {
-        val quiz = _uiState.value.quiz ?: return
-        if (quiz.phase != QuizPhase.ASKING) return
-        speechHelper.stopSpeaking()
-        _uiState.update { it.copy(quiz = quiz.copy(phase = QuizPhase.LISTENING, heard = null)) }
-        speechHelper.startVoiceRecognition { command -> onVoiceAnswer(command) }
-    }
-
-    /** 음성 응답 시뮬레이션 버튼: STT 결과 문자열("2번!")을 그대로 주입한다 */
-    fun simulateVoiceAnswer(choiceIndex: Int) {
-        val quiz = _uiState.value.quiz ?: return
-        if (quiz.phase == QuizPhase.ANSWERED || quiz.phase == QuizPhase.FINISHED) return
-        onVoiceAnswer("${choiceIndex + 1}번!")
-    }
-
-    private fun onVoiceAnswer(command: String) {
-        val quiz = _uiState.value.quiz ?: return
-        if (quiz.phase == QuizPhase.ANSWERED || quiz.phase == QuizPhase.FINISHED) return
-
-        if (command.isBlank()) {
-            _uiState.update { it.copy(quiz = quiz.copy(phase = QuizPhase.ASKING, heard = "(인식된 말이 없어요)")) }
-            _messages.tryEmit("음성 인식 엔진을 쓸 수 없어요 — '음성 응답 시뮬레이션' 버튼으로 답해 보세요")
-            return
-        }
-        val choice = QuizAnswerParser.parse(command, quiz.current.choices)
-        if (choice == null) {
-            _uiState.update { it.copy(quiz = quiz.copy(phase = QuizPhase.ASKING, heard = command)) }
-            speak("잘 못 알아들었어요. 1번, 2번, 3번 중에서 말씀해 주세요.")
-            return
-        }
-        val correct = choice == quiz.current.answerIndex
-        val updated = quiz.copy(
-            phase = QuizPhase.ANSWERED,
-            heard = command,
-            selectedIndex = choice,
-            lastCorrect = correct,
-            score = quiz.score + if (correct) 1 else 0,
-            answered = quiz.answered + 1,
-        )
-        _uiState.update { it.copy(quiz = updated) }
-        val answer = quiz.current
-        val feedback = if (correct) {
-            "딩동댕! 정답이에요. "
-        } else {
-            "아쉬워요! 정답은 ${answer.answerIndex + 1}번 ${answer.choices[answer.answerIndex]}. "
-        }
-        speak(feedback + answer.explanation)
-
-        quizStepJob?.cancel()
-        quizStepJob = viewModelScope.launch {
-            delay(NEXT_QUESTION_DELAY_MS)
-            val latest = _uiState.value.quiz ?: return@launch
-            if (latest.phase != QuizPhase.ANSWERED) return@launch
-            if (latest.index + 1 >= latest.deck.size) {
-                finishQuiz()
-                return@launch
-            }
-            _uiState.update {
-                it.copy(
-                    quiz = latest.copy(
-                        index = latest.index + 1,
-                        phase = QuizPhase.ASKING,
-                        heard = null,
-                        selectedIndex = null,
-                        lastCorrect = null,
-                    ),
-                )
-            }
-            askCurrentQuestion(intro = false)
-        }
-    }
-
-    private fun askCurrentQuestion(intro: Boolean) {
-        val quiz = _uiState.value.quiz ?: return
-        val question = quiz.current
-        val choices = question.choices.mapIndexed { i, c -> "${i + 1}번 $c" }.joinToString(", ")
-        val prefix = if (intro) "졸음을 깨우는 1분 상식 퀴즈! " else ""
-        speak("$prefix${quiz.index + 1}번째 문제. ${question.question} $choices.")
-    }
-
-    private fun finishQuiz() {
-        quizStepJob?.cancel()
-        val quiz = _uiState.value.quiz ?: return
-        if (quiz.phase == QuizPhase.FINISHED) return
-        _uiState.update { it.copy(quiz = quiz.copy(phase = QuizPhase.FINISHED, remainingSeconds = 0)) }
-        speak("1분 퀴즈 끝! ${quiz.answered}문제 중 ${quiz.score}문제를 맞히셨어요. 잠이 좀 깨셨나요?")
-    }
-
-    fun closeQuiz() {
-        quizTimerJob?.cancel()
-        quizStepJob?.cancel()
-        quizTimerJob = null
-        quizStepJob = null
-        if (_uiState.value.quiz != null) {
-            _uiState.update { it.copy(quiz = null) }
-            speechHelper.stopSpeaking()
-        }
-        mrPlayer.setDucked(false)
-    }
-
     // ── 피로 알림 ─────────────────────────────────────────────────────────────
 
     fun acceptFatigueNudge() {
         _uiState.update { it.copy(fatigueNudgeDismissed = true, fatigueNudgeVisible = false) }
         selectCategory(SpotCategory.REST)
-        speak("가까운 쉼터를 보여 드릴게요.")
+        speak("가까운 쉴 곳을 보여 드릴게요.")
     }
 
     fun dismissFatigueNudge() {
@@ -595,7 +426,6 @@ class MainViewModel(
     fun speak(script: String) = speechHelper.speakText(script)
 
     override fun onCleared() {
-        mrPlayer.stop()
         speechHelper.stopSpeaking()
         super.onCleared()
     }
@@ -604,7 +434,6 @@ class MainViewModel(
         private const val ORIGIN_WAIT_MS = 3_000L
         private const val MAP_PIN_LIMIT = 60
         private const val TRIP_POLL_MS = 5_000L
-        private const val NEXT_QUESTION_DELAY_MS = 5_000L
         const val FATIGUE_THRESHOLD_MINUTES = 120
         const val DEMO_TRIP_STEP_MINUTES = 30
 
@@ -617,7 +446,6 @@ class MainViewModel(
                     naviHelper = container.naviHelper,
                     vehicleManager = container.vehicleManager,
                     speechHelper = container.speechHelper,
-                    mrPlayer = container.mrPlayer,
                 )
             }
         }

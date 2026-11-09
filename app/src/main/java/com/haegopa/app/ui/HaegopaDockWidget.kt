@@ -1,6 +1,5 @@
 package com.haegopa.app.ui
 
-import com.haegopa.app.FeatureFlags
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -39,8 +38,6 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,7 +72,6 @@ import kotlinx.coroutines.delay
 
 /** 도크 위젯이 위임하는 사용자 액션 묶음 */
 data class DockActions(
-    val onToggleBooster: (Boolean) -> Unit,
     val onSelectCategory: (SpotCategory) -> Unit,
     val onLoadMore: () -> Unit,
     val onRefresh: () -> Unit,
@@ -92,7 +87,7 @@ data class DockActions(
 
 /**
  * 와이드 화면 오른쪽 '해고파' 도크.
- * 위에서부터 브랜드·주행 상태 / 졸음 방지 모드(FeatureFlags 로 끌 수 있음) / 먹·놀·쉬 탭 / 스팟 목록(정차: 전체 카드, 주행: 동승자용 큰 글씨 목록) / 연동 상태.
+ * 위에서부터 브랜드·주행 상태 / 먹·놀·쉬 탭 (+ 장시간 운전 알림) / 스팟 목록(정차: 전체 카드, 주행: 동승자용 큰 글씨 목록) / 연동 상태.
  */
 @Composable
 fun HaegopaDockWidget(
@@ -110,10 +105,6 @@ fun HaegopaDockWidget(
             ) {
                 DockHeader(state)
                 Spacer(Modifier.height(14.dp))
-                if (FeatureFlags.DROWSINESS_BOOSTER) {
-                    BoosterCard(enabled = state.booster.enabled, onToggle = actions.onToggleBooster)
-                    Spacer(Modifier.height(12.dp))
-                }
                 CategoryTabs(selected = state.selectedCategory, onSelect = actions.onSelectCategory)
                 AnimatedVisibility(visible = state.fatigueNudgeVisible) {
                     FatigueNudge(
@@ -231,8 +222,8 @@ private fun SloganTicker(animate: Boolean) {
 
 @Composable
 private fun DriveStatePill(driving: Boolean, speedKmh: Int, gear: GearPosition) {
-    val fill = if (driving) HaegopaColors.Booster else HaegopaColors.Success
-    val ink = if (driving) HaegopaColors.BoosterInk else HaegopaColors.SuccessInk
+    val fill = if (driving) HaegopaColors.Amber else HaegopaColors.Success
+    val ink = if (driving) HaegopaColors.AmberInk else HaegopaColors.SuccessInk
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = fill.copy(alpha = 0.14f),
@@ -252,69 +243,6 @@ private fun DriveStatePill(driving: Boolean, speedKmh: Int, gear: GearPosition) 
                     color = HaegopaColors.TextSecondary,
                 )
             }
-        }
-    }
-}
-
-// ── 졸음 방지 모드 ────────────────────────────────────────────────────────────
-
-@Composable
-private fun BoosterCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    val shape = RoundedCornerShape(22.dp)
-    val background = if (enabled) {
-        Brush.horizontalGradient(listOf(HaegopaColors.Booster, HaegopaColors.BoosterDeep))
-    } else {
-        Brush.horizontalGradient(listOf(HaegopaColors.SurfaceHigh, HaegopaColors.SurfaceHigh))
-    }
-    Surface(
-        onClick = { onToggle(!enabled) },
-        shape = shape,
-        color = Color.Transparent,
-        border = if (enabled) null else BorderStroke(1.dp, HaegopaColors.Outline),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .background(background, shape)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(if (enabled) HaegopaColors.OnAccent.copy(alpha = 0.12f) else HaegopaColors.Booster.copy(alpha = 0.18f)),
-            ) {
-                HIcon(HaegopaIcons.Bolt, tint = if (enabled) HaegopaColors.OnAccent else HaegopaColors.BoosterInk, size = 28.dp)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = if (enabled) "졸음 방지 모드 ON" else "졸음 방지 모드",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (enabled) HaegopaColors.OnAccent else HaegopaColors.TextPrimary,
-                )
-                Text(
-                    text = if (enabled) "MR 재생 중 · 지도 위 가사를 따라 불러요" else "노래방 MR · 싱얼롱 가사 · 1분 퀴즈",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (enabled) HaegopaColors.OnAccent.copy(alpha = 0.75f) else HaegopaColors.TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onToggle,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = HaegopaColors.OnAccent.copy(alpha = 0.85f),
-                    checkedBorderColor = Color.Transparent,
-                    uncheckedThumbColor = HaegopaColors.TextTertiary,
-                    uncheckedTrackColor = HaegopaColors.SurfaceHigher,
-                    uncheckedBorderColor = HaegopaColors.Outline,
-                ),
-            )
         }
     }
 }
@@ -379,7 +307,7 @@ private fun FatigueNudge(tripMinutes: Int, onAccept: () -> Unit, onDismiss: () -
             Button(
                 onClick = onAccept,
                 colors = ButtonDefaults.buttonColors(containerColor = HaegopaColors.Rest, contentColor = HaegopaColors.OnAccent),
-            ) { Text("쉼터 보기") }
+            ) { Text("쉴 곳 보기") }
         }
     }
 }
@@ -504,9 +432,9 @@ private fun DrivingFeed(state: MainUiState, actions: DockActions) {
     ) {
         item(key = "driving-header") {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 2.dp)) {
-                HIcon(HaegopaIcons.Car, tint = HaegopaColors.BoosterInk, size = 20.dp)
+                HIcon(HaegopaIcons.Car, tint = HaegopaColors.AmberInk, size = 20.dp)
                 Spacer(Modifier.width(6.dp))
-                Text("주행 중 · 큰 글씨 목록", style = MaterialTheme.typography.labelLarge, color = HaegopaColors.BoosterInk)
+                Text("주행 중 · 큰 글씨 목록", style = MaterialTheme.typography.labelLarge, color = HaegopaColors.AmberInk)
                 Spacer(Modifier.weight(1f))
                 Text("동승자가 골라 주세요", style = MaterialTheme.typography.labelMedium, color = HaegopaColors.TextTertiary)
             }
@@ -546,7 +474,7 @@ private fun DrivingFeed(state: MainUiState, actions: DockActions) {
                 HIcon(HaegopaIcons.Parking, tint = HaegopaColors.TextTertiary, size = 18.dp)
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = "정차하면 상세 정보 · 도슨트 · 스트레칭이 열려요",
+                    text = "정차하면 상세 정보 · 소개 듣기 · 스트레칭이 열려요",
                     style = MaterialTheme.typography.labelMedium,
                     color = HaegopaColors.TextTertiary,
                 )
@@ -561,12 +489,10 @@ private fun DrivingFeed(state: MainUiState, actions: DockActions) {
 @Composable
 private fun SdkStatusFooter(sdk: SdkSummary) {
     var expanded by remember { mutableStateOf(false) }
-    // 졸음 방지(퀴즈)를 끄면 STT 를 쓰지 않으므로 음성인식 상태는 숨긴다
-    val items = listOfNotNull(
+    val items = listOf(
         "내비" to sdk.navi,
         "차량" to sdk.vehicle,
         "음성합성" to sdk.tts,
-        ("음성인식" to sdk.stt).takeIf { FeatureFlags.DROWSINESS_BOOSTER },
     )
     Column(Modifier.fillMaxWidth()) {
         HorizontalDivider(color = HaegopaColors.Outline)

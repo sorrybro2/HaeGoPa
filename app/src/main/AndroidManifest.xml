@@ -27,16 +27,14 @@
     <!-- Pleos Vehicle SDK: 주행 시간(Odometer) -->
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
     <uses-permission android:name="pleos.car.permission.CAR_INFO" />
-    <!-- Pleos NaviHelper: 경로 탐색·경유지 주입(NAVI_ROUTE_SEARCH), 경로·현재 위치 조회(NAVI_ROUTE), 길안내 이벤트(NAVI_NOTIFY).
+    <!-- Pleos NaviHelper: 경로 탐색·목적지·경유지(NAVI_ROUTE_SEARCH), 경로·현재 위치 조회(NAVI_ROUTE), 길안내 이벤트(NAVI_NOTIFY).
          Pleos Connect 에뮬레이터에서 확인한 protectionLevel=normal → 설치 시 자동 허용 -->
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
     <uses-permission android:name="pleos.car.permission.NAVI_NOTIFY" />
-    <!-- Pleos TextToSpeech / SpeechToText (normal) -->
+    <!-- Pleos TextToSpeech / SpeechToText (normal). 해고파는 마이크(RECORD_AUDIO)를 쓰지 않는다 -->
     <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
     <uses-permission android:name="pleos.car.permission.STT_SERVICE" />
-    <!-- 음성 응답(Pleos SpeechToText / Android SpeechRecognizer) -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Android 11+ 패키지 가시성

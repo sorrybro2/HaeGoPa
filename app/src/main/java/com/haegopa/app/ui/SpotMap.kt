@@ -209,7 +209,7 @@ fun SpotMap(
                     drawIcon(flagIcon, p, 18.dp.toPx(), Color.White)
                 } else {
                     drawCircle(Color.Black.copy(alpha = 0.18f), 18.dp.toPx(), p + Offset(0f, 2.dp.toPx()))
-                    drawCircle(HaegopaColors.Booster, 16.dp.toPx(), p)
+                    drawCircle(HaegopaColors.Amber, 16.dp.toPx(), p)
                     drawCircle(Color.White, 16.dp.toPx(), p, style = Stroke(2.5.dp.toPx()))
                     val layout = textMeasurer.measure(
                         "${waypoint.order}",

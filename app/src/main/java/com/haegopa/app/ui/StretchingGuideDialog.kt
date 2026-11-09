@@ -200,7 +200,7 @@ fun StretchingGuideDialog(
                                 .background(
                                     when {
                                         finished || i < stepIndex -> HaegopaColors.Rest
-                                        i == stepIndex -> HaegopaColors.Booster
+                                        i == stepIndex -> HaegopaColors.Amber
                                         else -> HaegopaColors.SurfaceHigher
                                     },
                                 ),

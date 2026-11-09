@@ -19,10 +19,8 @@ import com.haegopa.app.domain.model.SpotCategory
 object HaegopaIcons {
     @DrawableRes val Eat = R.drawable.ic_restaurant
     @DrawableRes val Play = R.drawable.ic_attractions
-    @DrawableRes val Rest = R.drawable.ic_local_cafe
-    @DrawableRes val Bolt = R.drawable.ic_bolt
+    @DrawableRes val Rest = R.drawable.ic_spa
     @DrawableRes val Speaker = R.drawable.ic_volume_up
-    @DrawableRes val Mic = R.drawable.ic_mic
     @DrawableRes val AddWaypoint = R.drawable.ic_add_location_alt
     @DrawableRes val Added = R.drawable.ic_check_circle
     @DrawableRes val Car = R.drawable.ic_directions_car
@@ -30,25 +28,15 @@ object HaegopaIcons {
     @DrawableRes val Flag = R.drawable.ic_flag
     @DrawableRes val Place = R.drawable.ic_location_on
     @DrawableRes val Docent = R.drawable.ic_headphones
-    @DrawableRes val Quiz = R.drawable.ic_quiz
-    @DrawableRes val SkipNext = R.drawable.ic_skip_next
-    @DrawableRes val Music = R.drawable.ic_music_note
     @DrawableRes val Stretch = R.drawable.ic_self_improvement
-    @DrawableRes val Timer = R.drawable.ic_timer
     @DrawableRes val Clock = R.drawable.ic_schedule
     @DrawableRes val Route = R.drawable.ic_route
-    @DrawableRes val Info = R.drawable.ic_info
     @DrawableRes val Tune = R.drawable.ic_tune
     @DrawableRes val Refresh = R.drawable.ic_refresh
-    @DrawableRes val Close = R.drawable.ic_close
     @DrawableRes val ExpandMore = R.drawable.ic_expand_more
     @DrawableRes val ExpandLess = R.drawable.ic_expand_less
     @DrawableRes val NearMe = R.drawable.ic_near_me
-    @DrawableRes val Unlocked = R.drawable.ic_lock_open
     @DrawableRes val Wave = R.drawable.ic_graphic_eq
-    @DrawableRes val Touch = R.drawable.ic_touch_app
-    @DrawableRes val Stop = R.drawable.ic_stop_circle
-    @DrawableRes val PlayArrow = R.drawable.ic_play_arrow
     @DrawableRes val Logo = R.drawable.ic_logo
 }
 
