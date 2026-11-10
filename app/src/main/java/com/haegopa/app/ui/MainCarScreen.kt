@@ -88,7 +88,8 @@ fun MainCarScreen(viewModel: MainViewModel) {
             onRefresh = viewModel::refreshFeed,
             onSetDestination = viewModel::onSetDestination,
             onAddWaypoint = viewModel::onAddWaypoint,
-            onOpenDetail = viewModel::openDetail,
+            onSelectSpot = viewModel::selectSpot,
+            onCloseDetail = viewModel::clearSelection,
             onPlayDocent = viewModel::playDocent,
             onOpenStretching = viewModel::openStretching,
             onRepeatAnnouncement = viewModel::repeatAnnouncement,
@@ -147,18 +148,7 @@ fun MainCarScreen(viewModel: MainViewModel) {
         }
     }
 
-    // ── 정차 전용 화면 (주행이 시작되면 ViewModel 이 자동으로 닫는다) ──
-    state.detailSpot?.let { spot ->
-        SpotDetailDialog(
-            spot = spot,
-            role = state.routeRole(spot),
-            onSetDestination = { viewModel.onSetDestination(spot) },
-            onAddWaypoint = { viewModel.onAddWaypoint(spot) },
-            onPlayDocent = { viewModel.playDocent(spot) },
-            onOpenStretching = { viewModel.openStretching(spot.name) },
-            onDismiss = viewModel::closeDetail,
-        )
-    }
+    // ── 정차 전용 화면 (주행이 시작되면 ViewModel 이 자동으로 닫는다). 스팟 상세는 도크 안 패널 ──
     if (state.stretchingOpen) {
         StretchingGuideDialog(
             placeName = state.stretchingPlace,
@@ -191,6 +181,9 @@ private fun MapArea(
             waypoints = state.waypoints,
             speedKmh = state.speedKmh,
             radiusMeters = state.radiusMeters,
+            selected = state.selectedSpot?.takeIf { it.category == state.selectedCategory },
+            onSpotTap = viewModel::selectSpot,
+            onBackgroundTap = viewModel::clearSelection,
             modifier = Modifier.fillMaxSize(),
         )
 

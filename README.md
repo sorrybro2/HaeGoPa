@@ -41,7 +41,7 @@ adb shell am start -n com.haegopa.app/.MainActivity
 | ![정차 화면](docs/screenshots/01_parked.png) | ![주행 화면](docs/screenshots/02_driving.png) |
 | **🧭 [목적지] → 안내 중이던 경로를 버리고 "골목 손칼국수"로 새로 길안내** | **🧭 [경유지] → 목적지는 그대로, "온기 베이커리"를 먼저 들르도록 재탐색** |
 | ![순정 내비 목적지](docs/screenshots/05_pleos_navi_destination.png) | ![순정 내비 경유지](docs/screenshots/06_pleos_navi_waypoint.png) |
-| **🎡 놀고파 명소 상세: 소개 듣기(음성) + [목적지] · [경유지]** | **🌿 쉬고파 산책로: 1분 힐링 스트레칭 (정차 전용 · 단계별 음성)** |
+| **📍 핀이나 카드를 누르면: 지도가 그 위치로 확대 + 오른쪽에 상세 패널이 스윽** | **🌿 쉬고파 산책로: 1분 힐링 스트레칭 (정차 전용 · 단계별 음성)** |
 | ![스팟 상세](docs/screenshots/03_spot_detail.png) | ![스트레칭](docs/screenshots/04_stretching.png) |
 
 > 첫 화면의 버튼 상태는 순정 내비의 실제 경로를 따릅니다. 골목 손칼국수는 목적지로 안내 중이라 **✓ 안내 중**, 온기 베이커리는 경유지라 **✓ 추가됨**으로 나옵니다. 순정 내비 화면의 진행 바에 찍힌 회색 점이 경유지입니다.
@@ -153,12 +153,13 @@ adb shell am start -n com.haegopa.app/.MainActivity
 - 순정 내비가 알려 준 현재 위치(NaviHelper `getCurrentLocationInfo` → 주소 예: *수정구 시흥동*, 없으면 가상 위치)를 중심으로 **반경 안의 스팟만**, **가까운 순(오름차순)** 으로 페이지 단위 무한 스크롤을 제공합니다. 반경이 끝나면 "모두 봤어요"로 마무리합니다.
 - **검색 반경**: 지도 맨 윗줄에서 `2km` · `5km` · `10km` · `직접 설정(1~20km, 0.5km 단위 슬라이더)` 중 고릅니다. 지도 원 · 목록 · 음성 안내가 함께 바뀝니다. 직접 설정은 슬라이더 조작이 필요하므로 정차 중에만 열립니다.
 - 지도에는 목록 스크롤과 상관없이 반경 안의 스팟이 **모두 핀으로** 표시됩니다.
+- **누르면 지도가 그 위치로 스윽**: 목록 카드나 지도 핀을 누르면 지도가 그 스팟을 가운데로 끌어오며 확대하고, 핀이 커지면서 물결로 강조됩니다. 동시에 오른쪽 도크의 목록 자리에 **상세 패널이 밀려 들어옵니다**(소개 · 주소 · 태그 · 음성 소개 원고 · [목적지] · [경유지] · [소개 듣기] / [1분 스트레칭]). 팝업이 지도를 가리지 않아서 "어디쯤인지" 보면서 고를 수 있습니다. **[‹ 목록]** 이나 지도 빈 곳을 누르면 목록과 전체 지도로 돌아가고, 목록 스크롤 위치는 그대로입니다.
 - 카드에는 `거리(320m)` · `스팟 이름` · `소요 시간` · `종류 태그(맛집 · 공원 · 사우나 …)` · `특징 태그(주차가능 · 뷰맛집 · 동승자추천 …)`가 표시됩니다. 종류 태그는 맨 앞에 카테고리 색으로 채워서 한눈에 구분됩니다.
 - 연속 주행 **2시간**이 지나면 "쉬고파" 탭으로 가까운 쉴 곳을 제안합니다.
 
 ### 2. 🧭 순정 내비 원터치 연동 — [목적지] · [경유지] 두 가지 선택
 
-모든 스팟(정차 카드 · 주행 중 동승자 목록 · 상세 팝업)에 버튼이 두 개 있습니다. 누르면 `NaviHelper`로 순정 내비에 바로 전달되고, Pleos에서는 순정 내비가 앞으로 나와 탐색 결과를 보여 줍니다.
+모든 스팟(정차 카드 · 주행 중 동승자 목록 · 상세 패널)에 버튼이 두 개 있습니다. 누르면 `NaviHelper`로 순정 내비에 바로 전달되고, Pleos에서는 순정 내비가 앞으로 나와 탐색 결과를 보여 줍니다.
 
 | 버튼 | 언제 쓰나 | 동작 (NaviHelper) |
 |---|---|---|
@@ -176,7 +177,7 @@ adb shell am start -n com.haegopa.app/.MainActivity
 | | 🅿️ 정차 (`Speed == 0 km/h`) | 🚗 주행 (`Speed > 0 km/h`) |
 |---|---|---|
 | 리스트 | 반경 거리순 무한 스크롤 (상세 카드) | **동승자용 큰 글씨 간편 목록** — 스크롤 가능, **최대 21개**, 거리 · 이름 · [목적지] · [경유지]만 표시. 맨 위에 "가장 가까운 곳" 하이라이트 |
-| 상세 · 소개 듣기 · 스트레칭 · 반경 직접 설정 | 터치로 열기 가능 | 열 수 없음. 주행이 시작되면 열려 있던 창을 **자동으로 닫음**. 목록 항목을 누르면 상세 대신 **음성으로 읽어 줌** |
+| 상세 · 소개 듣기 · 스트레칭 · 반경 직접 설정 | 터치로 열기 가능 (상세는 도크 안 패널, 지도는 그 스팟으로 확대) | 열 수 없음. 주행이 시작되면 열려 있던 창 · 패널을 **자동으로 닫음**. 목록 항목을 누르면 상세 대신 **음성으로 읽어 주고**, 지도만 그 위치로 옮겨 동승자가 볼 수 있게 함 |
 | 안내 방식 | 화면 중심 + TTS | **TTS 음성 중심** (주행 시작 · 탭 변경 · 반경 변경 · 목적지/경유지 전달 시 음성 안내 + 자막) |
 | 버튼 | 일반 크기 | 큰 버튼 (목적지 · 경유지 · 다시 듣기) |
 | 지도 | 현재 위치 기준 반경 원 | 차량 마커가 **경로를 따라 이동**하고 지나온 길은 회색 (시연용 빨리감기) |
@@ -262,7 +263,8 @@ flowchart LR
         S["MainCarScreen"] --> M["SpotMap<br/>(주변 스팟 지도)"]
         S --> R["RadiusSelector"]
         S --> D["HaegopaDockWidget"] --> C["SpotCardItem"]
-        S --> K["SpotDetailDialog · StretchingGuideDialog"]
+        D --> P["SpotDetailPanel"]
+        S --> K["StretchingGuideDialog"]
     end
     subgraph PR["Presentation"]
         VM["MainViewModel<br/>StateFlow · MainUiState"]
@@ -306,12 +308,12 @@ HaeGoPa/
 │   │   ├── car/CarDrivingSignals.kt       # AAOS VHAL 차속 · 기어
 │   │   └── mock/                          # 일반 AVD용 Mock 구현
 │   ├── presentation/                      # MainViewModel · MainUiState
-│   └── ui/                                # MainCarScreen · SpotMap · RadiusSelector · HaegopaDockWidget · SpotCardItem · SpotDetailDialog …
+│   └── ui/                                # MainCarScreen · SpotMap · RadiusSelector · HaegopaDockWidget · SpotCardItem · SpotDetailPanel …
 │       └── theme/                         # 주야간 팔레트 · Pretendard 타이포 · 화면 배율(LocalUiScale)
 ├── app/src/main/res/drawable/ic_*.xml     # Material Symbols 벡터 아이콘
 ├── app/src/main/res/font/                 # Pretendard (OFL)
 ├── licenses/                              # 서체 라이선스
-└── app/src/test/                          # JVM 단위 테스트 21개
+└── app/src/test/                          # JVM 단위 테스트 22개
 ```
 
 | 계층 | 기술 |
@@ -339,7 +341,7 @@ HaeGoPa/
 # 디버그 APK → app/build/outputs/apk/debug/app-debug.apk
 ./gradlew assembleDebug
 
-# 단위 테스트 (21개)
+# 단위 테스트 (22개)
 ./gradlew testDebugUnitTest
 
 # 공모전 제출용 release APK → apk/{팀명}_HAEGOPA_release.apk
@@ -391,7 +393,7 @@ HaeGoPa/
 
 | 항목 | 결과 |
 |---|---|
-| 단위 테스트 21개 (반경·거리순·페이징 · 우회 5분 필터 · 카테고리별 종류 태그 · 소개 듣기/스트레칭 대상 · 목적지 교체 · 경유지 한도 · 주행 판정 · 조사 선택) | ✅ 통과 |
+| 단위 테스트 22개 (반경·거리순·페이징 · 우회 5분 필터 · 카테고리별 종류 태그 · 소개 듣기/스트레칭 대상 · 목적지 교체 · 경유지 한도 · 주행 판정 · 상세 패널은 정차 중에만 · 조사 선택) | ✅ 통과 |
 | `assembleDebug` · `exportCompetitionApk`(release) | ✅ 성공 |
 | **Pleos Connect Emulator v2.1.0** (2026-11-06) — NaviHelper 연결, 현재 위치·주소("수정구 시흥동")를 반경 원점으로 사용 | ✅ 확인 |
 | ↳ 경로가 없을 때 [경유지] → `requestRoute` → 순정 내비가 해당 스팟까지 경로 탐색 · 길안내 시작 | ✅ 확인 |
@@ -401,6 +403,7 @@ HaeGoPa/
 | ↳ 순정 내비의 목적지 · 경유지를 해고파 "내 경로" · 지도 · 카드 버튼(✓ 안내 중 / ✓ 추가됨)에 동기화, [내비 열기]로 화면 전환 | ✅ 확인 |
 | ↳ Pleos TextToSpeech(ON_DEVICE · ko-KR) 연결과 읽기 요청, 화면 자막 | ✅ 확인 (실제 스피커 음질은 PT 장비에서 재확인) |
 | ↳ **(2026-11-09)** 먹고파 · 놀고파 · 쉬고파 새 분류(종류 태그) · 정차/주행 전환 · 동승자 목록 · 반경 2/5/10km · 소개 듣기 · 스트레칭 (release APK) | ✅ 확인 (크래시 없음) |
+| ↳ **(2026-11-09)** 카드 · 지도 핀 터치 → 지도가 그 스팟으로 확대 · 강조, 도크에 상세 패널 슬라이드 인, 다른 핀으로 전환, 빈 곳 터치로 목록 복귀 (release APK) | ✅ 확인 |
 | ↳ Vehicle 주행 시간(`TRIP_DRIVING_TIME`) | ⚠️ 에뮬레이터 미지원 → 앱 기준 시간으로 폴백 |
 | ↳ Virtual Console 기어 연동 | ✅ 기어 P 수신 확인 · D(주행) 전환은 PT 리허설에서 확인 예정 |
 | 일반 AVD (Mock 폴백) | ✅ 이전 UI에서 확인 · 새 UI는 Pleos 에뮬레이터 기준으로 확인 |
