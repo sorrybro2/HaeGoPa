@@ -29,6 +29,11 @@ internal object PleosServiceProbe {
 
     fun isSpeechServiceAvailable(context: Context): Boolean = available(context, SPEECH_PACKAGES, SPEECH_ACTION)
 
+    private val LOCATION_PACKAGES = listOf("ai.pleos.playground.service.location.fused")
+    private const val LOCATION_ACTION = "ai.pleos.playground.service.location.fused.FUSED_LOCATION_START"
+
+    fun isFusedLocationServiceAvailable(context: Context): Boolean = available(context, LOCATION_PACKAGES, LOCATION_ACTION)
+
     @Suppress("DEPRECATION")
     private fun available(context: Context, packages: List<String>, action: String): Boolean {
         val pm = context.packageManager

@@ -104,6 +104,24 @@ class MockDataRepositoryTest {
     }
 
     @Test
+    fun `anchored spots stay put while the car moves, and distances are measured from the car`() = runTest {
+        val anchored = MockDataRepository(latencyMillis = 0).apply { anchorAt(origin) }
+        val atStart = anchored.getNearbySpots(SpotCategory.EAT, origin, 0, 100, radiusMeters = 20_000).items
+        val driven = GeoUtils.offset(origin, 1_500.0, 0.0) // 북쪽으로 1.5km 달린 뒤
+        val later = anchored.getNearbySpots(SpotCategory.EAT, driven, 0, 100, radiusMeters = 20_000).items
+
+        // 같은 스팟은 같은 자리에 있다 (차를 따라오지 않는다)
+        val before = atStart.associateBy { it.id }
+        later.forEach { spot -> assertEquals(before.getValue(spot.id).location, spot.location) }
+        // 거리 · 정렬은 차 위치 기준
+        later.forEach { spot ->
+            assertEquals(GeoUtils.distanceMeters(driven, spot.location), spot.distanceMeters.toDouble(), 1.0)
+        }
+        assertEquals(later.sortedBy { it.distanceMeters }.map { it.id }, later.map { it.id })
+        assertTrue(later.first().address.startsWith("현재 위치 "))
+    }
+
+    @Test
     fun `docent is provided exactly for play attractions and landmarks`() = runTest {
         val play = allSpots(SpotCategory.PLAY)
         val sights = play.filter { it.kind == SpotTag.ATTRACTION || it.kind == SpotTag.LANDMARK }

@@ -39,6 +39,7 @@ class PleosVehicleGateway(context: Context) : VehicleGateway {
 
     override val gear: StateFlow<GearPosition> = simulator.gear
     override val speedSource: StateFlow<String> = simulator.speedSource
+    override val speedKmh: StateFlow<Int> = simulator.speedKmh
 
     @Volatile
     private var vehicle: Vehicle? = null

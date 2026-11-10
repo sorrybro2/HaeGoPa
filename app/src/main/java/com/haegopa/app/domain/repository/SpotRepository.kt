@@ -17,6 +17,12 @@ interface SpotRepository {
         radiusMeters: Int = DEFAULT_RADIUS_METERS,
     ): SpotPage
 
+    /**
+     * 가상 스팟을 깔 기준점(출발 위치). 차가 움직여도 스팟이 따라오지 않게 한 번 정해 둔다.
+     * 실제 POI 저장소는 좌표가 이미 고정이라 할 일이 없다.
+     */
+    fun anchorAt(point: GeoPoint) = Unit
+
     companion object {
         const val DEFAULT_RADIUS_METERS = 2_000
     }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import ai.pleos.playground.stt.SpeechToText as PleosSpeechToText
 import ai.pleos.playground.stt.constant.ErrorType as SttErrorType
@@ -36,6 +37,10 @@ import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitListener
 /**
  * Pleos TextToSpeech / SpeechToText SDK(v3.3.1, ON_DEVICE · ko-KR) 어댑터.
  * 초기화에 실패하면(일반 AVD, 엔진 미탑재) Android TTS / SpeechRecognizer / 시뮬레이션으로 폴백한다.
+ *
+ * 코파일럿용 순서 보장:
+ * - [speakThen] : Pleos TTS `onStart` 뒤에 오는 `onDone/onStop` 만 "다 읽음"으로 본다 (앞 문장을 끊으며 오는 onStop 무시)
+ * - [startVoiceRecognition] / [stopListening] : 요청마다 토큰을 붙여, 취소되었거나 지난 요청의 결과 · 타임아웃은 버린다
  */
 class PleosSpeechGateway(context: Context) : SpeechGateway {
 
@@ -74,7 +79,42 @@ class PleosSpeechGateway(context: Context) : SpeechGateway {
     @Volatile
     private var lastPartial = ""
 
+    private val listenSeq = AtomicLong(0)
+
     // ── TTS ────────────────────────────────────────────────────────────────────
+
+    private val doneSeq = AtomicLong(0)
+
+    /** speakThen 완료 대기 (토큰, 콜백) */
+    @Volatile
+    private var pendingDone: Pair<Long, () -> Unit>? = null
+
+    /** 기다리는 문장이 실제로 읽히기 시작했는지 (onStart 를 받은 뒤의 onDone/onStop 만 인정) */
+    @Volatile
+    private var pendingStarted = false
+
+    private val ttsEvents = object : TtsEventListener {
+        override fun onStart() {
+            pendingStarted = true
+        }
+
+        override fun onReady() = Unit
+
+        override fun onDone() {
+            if (pendingStarted) firePendingDone()
+        }
+
+        override fun onStop() {
+            if (pendingStarted) firePendingDone()
+        }
+
+        override fun onUpdatedRms(rms: Double) = Unit
+
+        override fun onError(errorType: TtsErrorType) {
+            Log.w(TAG, "Pleos TTS error: $errorType")
+            firePendingDone()
+        }
+    }
 
     private fun initPleosTts() {
         try {
@@ -83,18 +123,8 @@ class PleosSpeechGateway(context: Context) : SpeechGateway {
             // "lateinit property tts has not been initialized" 로 실패한다 (Pleos 에뮬레이터에서 확인) → 성공 콜백에서 등록
             engine.initialize(object : TtsInitListener {
                 override fun onSuccess() {
-                    runCatching {
-                        engine.addEventListener(object : TtsEventListener {
-                            override fun onStart() = Unit
-                            override fun onReady() = Unit
-                            override fun onDone() = Unit
-                            override fun onStop() = Unit
-                            override fun onUpdatedRms(rms: Double) = Unit
-                            override fun onError(errorType: TtsErrorType) {
-                                Log.w(TAG, "Pleos TTS error: $errorType")
-                            }
-                        })
-                    }.onFailure { Log.w(TAG, "Pleos TTS listener registration failed", it) }
+                    runCatching { engine.addEventListener(ttsEvents) }
+                        .onFailure { Log.w(TAG, "Pleos TTS listener registration failed", it) }
                     runCatching { engine.setLocale(Locale.KOREA) }
                     pleosTtsReady = true
                     pleosTtsStatus.value = SdkStatus("Pleos TextToSpeech", SdkBackend.PLEOS, "ON_DEVICE · ko-KR")
@@ -113,6 +143,7 @@ class PleosSpeechGateway(context: Context) : SpeechGateway {
     }
 
     override fun speakText(script: String) {
+        pendingDone = null
         val engine = pleosTts
         if (pleosTtsReady && engine != null) {
             fallback.publishCaption(script)
@@ -122,7 +153,35 @@ class PleosSpeechGateway(context: Context) : SpeechGateway {
         fallback.speakText(script)
     }
 
+    override fun speakThen(script: String, onDone: () -> Unit) {
+        val engine = pleosTts
+        if (pleosTtsReady && engine != null) {
+            val token = doneSeq.incrementAndGet()
+            pendingStarted = false
+            pendingDone = token to onDone
+            fallback.publishCaption(script)
+            if (runCatching { engine.speak(script) }.isSuccess) {
+                // Pleos TTS 는 onStart · onDone 을 보내 준다 (에뮬레이터 확인). 이건 이벤트가 끝내 안 올 때만 쓰는 안전장치
+                mainHandler.postDelayed(
+                    { if (pendingDone?.first == token) firePendingDone() },
+                    MockSpeechHelperImpl.safetyTimeoutMillis(script),
+                )
+                return
+            }
+            pendingDone = null
+        }
+        fallback.speakThen(script, onDone)
+    }
+
+    private fun firePendingDone() {
+        val pending = pendingDone ?: return
+        pendingDone = null
+        pendingStarted = false
+        mainHandler.post(pending.second)
+    }
+
     override fun stopSpeaking() {
+        pendingDone = null
         runCatching { pleosTts?.stop() }
         fallback.stopSpeaking()
     }
@@ -182,17 +241,31 @@ class PleosSpeechGateway(context: Context) : SpeechGateway {
         }
     }
 
+    private fun micGranted(): Boolean =
+        ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    /** 마이크를 허용하지 않았으면 Pleos 음성 서비스가 마이크를 갖고 있어도 듣지 않는다 (사용자 선택 존중) */
+    override val canListen: Boolean
+        get() = micGranted() && (pleosSttReady || fallback.canListen)
+
     override fun startVoiceRecognition(callback: (command: String) -> Unit) {
         val engine = pleosStt
-        val micGranted = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-        if (pleosSttReady && engine != null && micGranted) {
+        if (pleosSttReady && engine != null && micGranted()) {
+            val token = listenSeq.incrementAndGet()
             lastPartial = ""
             pendingSttCallback.set(callback)
-            val started = runCatching { engine.request() }.isSuccess
+            val started = runCatching { engine.request() }
+                .onFailure { Log.w(TAG, "Pleos STT request failed", it) }
+                .isSuccess
             if (started) {
-                // 응답이 오지 않는 경우를 대비한 안전 타임아웃
-                mainHandler.postDelayed({ deliver(lastPartial) }, STT_TIMEOUT_MS)
+                // 응답이 오지 않으면 그때까지 들은 말로 끝내고 인식도 멈춘다 (지난 요청의 타임아웃은 토큰으로 무시).
+                // Pleos 에뮬레이터: request 뒤 듣기 준비까지 약 2초 → 실제로 듣는 시간은 약 8초
+                mainHandler.postDelayed({
+                    if (token == listenSeq.get() && pendingSttCallback.get() != null) {
+                        deliver(lastPartial)
+                        runCatching { engine.stop() }
+                    }
+                }, STT_TIMEOUT_MS)
                 return
             }
             pendingSttCallback.set(null)
@@ -200,14 +273,21 @@ class PleosSpeechGateway(context: Context) : SpeechGateway {
         fallback.startVoiceRecognition(callback)
     }
 
+    override fun stopListening() {
+        listenSeq.incrementAndGet()
+        if (pendingSttCallback.getAndSet(null) != null) runCatching { pleosStt?.stop() }
+        fallback.stopListening()
+    }
+
     private fun deliver(text: String) {
         val callback = pendingSttCallback.getAndSet(null) ?: return
+        Log.i(TAG, "Pleos STT result: \"$text\"")
         mainHandler.post { callback(text) }
     }
 
     private companion object {
         const val TAG = "PleosSpeech"
-        const val STT_TIMEOUT_MS = 8_000L
+        const val STT_TIMEOUT_MS = 10_000L
         val CONNECTING_STATUS = SdkStatus("음성 엔진", SdkBackend.CONNECTING, "초기화 중")
     }
 }

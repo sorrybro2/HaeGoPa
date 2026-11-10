@@ -39,6 +39,18 @@ object GeoUtils {
         return GeoPoint(Math.toDegrees(lat2), Math.toDegrees(lng2))
     }
 
+    /** [toLocalMeters] 의 역: origin 에서 동쪽 [east] m · 북쪽 [north] m 지점 */
+    fun fromLocalMeters(origin: GeoPoint, east: Double, north: Double): GeoPoint = GeoPoint(
+        latitude = origin.latitude + north / 110_540.0,
+        longitude = origin.longitude + east / (111_320.0 * cos(Math.toRadians(origin.latitude))),
+    )
+
+    /** from → to 방위각 (북=0°, 시계방향, 0..360) */
+    fun bearingDegrees(from: GeoPoint, to: GeoPoint): Double {
+        val (east, north) = toLocalMeters(from, to)
+        return (Math.toDegrees(atan2(east, north)) + 360.0) % 360.0
+    }
+
     /** 지도 투영용: origin 기준 (동쪽 m, 북쪽 m) */
     fun toLocalMeters(origin: GeoPoint, point: GeoPoint): Pair<Double, Double> {
         val north = (point.latitude - origin.latitude) * 110_540.0

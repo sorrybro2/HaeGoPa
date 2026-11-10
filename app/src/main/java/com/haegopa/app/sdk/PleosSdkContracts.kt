@@ -89,6 +89,9 @@ interface NaviHelperGateway : MockNaviHelper {
     /** 순정 내비 화면으로 전환 (Pleos 에서만 가능, 성공 여부 반환) */
     fun openNavigationScreen(): Boolean = false
 
+    /** 현재 위치를 다시 물어본다 → [currentLocation] · [currentAddress] 갱신 (NaviHelper 는 한 번 묻고 한 번 답한다) */
+    fun requestCurrentLocation() = Unit
+
     override fun addWaypoint(name: String, latitude: Double, longitude: Double): Boolean =
         addWaypointDetailed(name, latitude, longitude).isSuccess
 }
@@ -96,6 +99,9 @@ interface NaviHelperGateway : MockNaviHelper {
 interface VehicleGateway : MockVehicleManager {
     val status: StateFlow<SdkStatus>
     val gear: StateFlow<GearPosition>
+
+    /** 현재 차속(km/h). 리스너는 화면(ViewModel) 하나만 쓰므로, 코파일럿처럼 뒤에서 보는 쪽은 이 값을 구독한다 */
+    val speedKmh: StateFlow<Int>
 
     /** 현재 차속 값의 출처 (VHAL 차속 / Virtual Console 기어 연동 / PT 데모 시뮬레이터) */
     val speedSource: StateFlow<String>
@@ -110,6 +116,15 @@ interface VehicleGateway : MockVehicleManager {
     fun refreshSensors()
 }
 
+/** 차의 현재 위치 (Pleos FusedLocation). 없는 기기에서는 [location] 이 null 로 남는다 */
+interface LocationGateway {
+    val status: StateFlow<SdkStatus>
+    val location: StateFlow<GeoPoint?>
+
+    /** 런타임 권한을 허용한 직후 다시 연결 */
+    fun refresh() = Unit
+}
+
 /** 화면 자막(TTS 낭독 문장) — 같은 문장을 다시 말해도 갱신되도록 seq 포함 */
 data class SpeechCaption(val text: String, val seq: Long)
 
@@ -118,4 +133,16 @@ interface SpeechGateway : MockSpeechHelper {
     val sttStatus: StateFlow<SdkStatus>
     val caption: StateFlow<SpeechCaption?>
     fun stopSpeaking()
+
+    /**
+     * 문장을 읽고, 다 읽으면 [onDone] 을 메인 스레드에서 부른다 (끝나거나 · 멈추거나 · 실패해도 한 번).
+     * 코파일럿이 질문을 다 읽은 뒤에 듣기를 시작할 때 쓴다. 그사이 다른 문장을 읽으면 [onDone] 은 오지 않는다.
+     */
+    fun speakThen(script: String, onDone: () -> Unit)
+
+    /** 지금 대답을 들을 수 있는지 (마이크 권한 + 음성 인식 엔진) */
+    val canListen: Boolean
+
+    /** 듣고 있던 음성 인식을 취소한다. 취소된 요청의 결과 콜백은 오지 않는다 */
+    fun stopListening()
 }

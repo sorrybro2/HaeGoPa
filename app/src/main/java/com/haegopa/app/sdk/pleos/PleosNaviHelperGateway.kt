@@ -318,6 +318,12 @@ class PleosNaviHelperGateway(context: Context) : NaviHelperGateway {
         mock.clearWaypoints()
     }
 
+    override fun requestCurrentLocation() {
+        val helper = naviHelper ?: return
+        if (!connected) return
+        runCatching { helper.getCurrentLocationInfo() }.onFailure { Log.w(TAG, "location request failed", it) }
+    }
+
     /** Pleos 순정 내비 앱을 앞으로 불러온다 (Pleos 에서는 해고파와 같은 메인 영역에 열린다) */
     override fun openNavigationScreen(): Boolean {
         val intent = appContext.packageManager.getLaunchIntentForPackage(NAVI_APP_PACKAGE) ?: return false

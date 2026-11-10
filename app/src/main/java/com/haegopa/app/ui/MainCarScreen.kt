@@ -45,6 +45,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.haegopa.app.copilot.CopilotAnswer
+import com.haegopa.app.copilot.CopilotPhase
+import com.haegopa.app.copilot.CopilotState
 import com.haegopa.app.domain.model.GearPosition
 import com.haegopa.app.domain.model.SpotCategory
 import com.haegopa.app.domain.util.GeoUtils
@@ -56,6 +59,7 @@ import com.haegopa.app.sdk.SpeechCaption
 import com.haegopa.app.sdk.Waypoint
 import com.haegopa.app.sdk.WaypointKind
 import com.haegopa.app.ui.theme.HaegopaColors
+import com.haegopa.app.ui.theme.color
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.min
@@ -173,13 +177,17 @@ private fun MapArea(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier,
 ) {
+    // 차 위치 · 경로는 달리는 동안 초당 30번 바뀐다 → State 로만 넘기고 지도가 그리기 단계에서 읽는다
+    val car = viewModel.car.collectAsStateWithLifecycle()
+    val route = viewModel.route.collectAsStateWithLifecycle()
     Box(modifier.clipToBounds()) {
         SpotMap(
             origin = state.origin,
+            car = { car.value },
+            route = { route.value },
             spots = state.mapSpots.filter { it.category == state.selectedCategory }.ifEmpty { state.currentFeed.items },
             category = state.selectedCategory,
             waypoints = state.waypoints,
-            speedKmh = state.speedKmh,
             radiusMeters = state.radiusMeters,
             selected = state.selectedSpot?.takeIf { it.category == state.selectedCategory },
             onSpotTap = viewModel::selectSpot,
@@ -210,6 +218,7 @@ private fun MapArea(
                 )
             }
             CaptionBubble(caption)
+            CopilotBanner(copilot = state.copilot, onAnswer = viewModel::answerCopilot)
         }
 
         Row(
@@ -225,13 +234,16 @@ private fun MapArea(
                 speedSource = state.sdk.speedSource,
                 onSimulateSpeed = viewModel::simulateSpeed,
                 onAddTripMinutes = viewModel::addDemoTripMinutes,
+                onDemoCopilot = viewModel::demoCopilot,
             )
             Spacer(Modifier.weight(1f))
             RouteSummaryCard(
                 waypoints = state.waypoints,
                 navi = state.sdk.navi,
+                copilot = state.copilot,
                 onOpenNavi = viewModel::openNavigation,
                 onClear = viewModel::clearWaypoints,
+                onToggleCopilot = viewModel::toggleCopilot,
             )
         }
     }
@@ -330,6 +342,7 @@ private fun DemoDrivePanel(
     speedSource: String,
     onSimulateSpeed: (Int) -> Unit,
     onAddTripMinutes: () -> Unit,
+    onDemoCopilot: () -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     FloatingCard {
@@ -380,6 +393,7 @@ private fun DemoDrivePanel(
                 }
             }
             AnimatedVisibility(visible = expanded) {
+                // 설명 글은 차속 칩 줄(약 340dp)보다 넓어지지 않게 묶는다 — 넓어지면 오른쪽 '내 경로' 카드가 눌린다
                 Column {
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -393,10 +407,22 @@ private fun DemoDrivePanel(
                         DemoChip(label = "+30분", selected = false, onClick = onAddTripMinutes)
                     }
                     Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DemoChip(label = "코파일럿", selected = false, onClick = onDemoCopilot)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "6초 뒤 순정 내비 위에서 지금 탭으로 말을 걸어요",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = HaegopaColors.TextSecondary,
+                            modifier = Modifier.widthIn(max = 220.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = "PT 시연용 가상 차속 · 신호: $speedSource",
                         style = MaterialTheme.typography.labelSmall,
                         color = HaegopaColors.TextTertiary,
+                        modifier = Modifier.widthIn(max = 340.dp),
                     )
                 }
             }
@@ -413,10 +439,13 @@ private fun DemoChip(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier.heightIn(min = 48.dp),
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            // 칩 글자는 줄바꿈하지 않는다 (좁아져도 "+3/0/분"처럼 쪼개지지 않게)
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = if (selected) HaegopaColors.OnAccent else HaegopaColors.TextPrimary,
+                maxLines = 1,
+                softWrap = false,
             )
         }
     }
@@ -427,8 +456,10 @@ private fun DemoChip(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun RouteSummaryCard(
     waypoints: List<Waypoint>,
     navi: SdkStatus,
+    copilot: CopilotState,
     onOpenNavi: () -> Unit,
     onClear: () -> Unit,
+    onToggleCopilot: () -> Unit,
 ) {
     val destination = waypoints.firstOrNull { it.kind == WaypointKind.DESTINATION }
     val stops = waypoints.filter { it.kind == WaypointKind.WAYPOINT }.sortedBy { it.order }
@@ -483,7 +514,7 @@ private fun RouteSummaryCard(
             }
             RouteStopRow(
                 marker = { HIcon(HaegopaIcons.Flag, tint = HaegopaColors.Danger, size = 18.dp) },
-                label = destination?.name ?: "목적지 · 회사 (가상 경로)",
+                label = destination?.name ?: "목적지 없음 · 동네 한 바퀴 (시연 경로)",
                 emphasize = destination != null,
             )
             if (stops.isEmpty()) {
@@ -492,6 +523,126 @@ private fun RouteSummaryCard(
                     text = "카드의 [목적지] · [경유지]로 순정 내비에 바로 보내요",
                     style = MaterialTheme.typography.labelMedium,
                     color = HaegopaColors.TextTertiary,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(HaegopaColors.Outline.copy(alpha = 0.6f)),
+            )
+            Spacer(Modifier.height(6.dp))
+            CopilotRow(copilot = copilot, onToggle = onToggleCopilot)
+        }
+    }
+}
+
+/** 내 경로 카드 맨 아래: 음성 코파일럿 켜짐/꺼짐 + 마지막 기록 */
+@Composable
+private fun CopilotRow(copilot: CopilotState, onToggle: () -> Unit) {
+    val on = copilot.enabled
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        HIcon(HaegopaIcons.Mic, tint = if (on) HaegopaColors.Brand else HaegopaColors.TextTertiary, size = 20.dp)
+        Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) {
+            Text("음성 코파일럿", style = MaterialTheme.typography.labelLarge, color = HaegopaColors.TextPrimary)
+            val last = copilot.lastLog
+            Text(
+                text = when {
+                    !on -> "켜면 내비 화면에서도 말로 권해요"
+                    last != null -> "${last.spotName} · ${last.text}"
+                    else -> "내비 화면에서 쉴 곳 · 맛집을 말로 권해요"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = HaegopaColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Surface(
+            onClick = onToggle,
+            shape = RoundedCornerShape(50),
+            color = if (on) HaegopaColors.Brand else HaegopaColors.SurfaceHigher,
+            modifier = Modifier.heightIn(min = 40.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Text(
+                    text = if (on) "켜짐" else "꺼짐",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (on) HaegopaColors.OnAccent else HaegopaColors.TextSecondary,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 코파일럿 제안이 떠 있는데 해고파 화면이 앞에 있을 때(알림을 눌러 들어왔거나 · 순정 내비가 없는 기기의 시연)
+ * 지도 위에 같은 질문과 [경유지 추가] · [괜찮아요] 를 보여 준다.
+ */
+@Composable
+private fun CopilotBanner(copilot: CopilotState, onAnswer: (CopilotAnswer) -> Unit) {
+    val suggestion = copilot.active
+    AnimatedVisibility(visible = suggestion != null, enter = fadeIn(), exit = fadeOut()) {
+        if (suggestion == null) return@AnimatedVisibility
+        val spot = suggestion.spot
+        val accent = spot.category.color()
+        FloatingCard(modifier = Modifier.widthIn(max = 720.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            ) {
+                CategoryIconTile(spot.category, size = 48.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f, fill = false)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        HIcon(HaegopaIcons.Mic, tint = HaegopaColors.Brand, size = 16.dp)
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "코파일럿 제안 · " + when (copilot.phase) {
+                                CopilotPhase.SPEAKING -> "묻는 중"
+                                CopilotPhase.LISTENING -> "듣는 중 — 응 / 아니"
+                                CopilotPhase.WAITING_TAP -> copilot.heard?.let { "\"$it\" — 버튼으로 골라 주세요" } ?: "버튼으로 골라 주세요"
+                                CopilotPhase.IDLE -> ""
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = HaegopaColors.TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(spot.name, style = MaterialTheme.typography.titleMedium, color = HaegopaColors.TextPrimary, maxLines = 1)
+                    Text(
+                        text = buildString {
+                            append(GeoUtils.formatDistance(spot.distanceMeters))
+                            if (suggestion.asWaypoint && spot.category == SpotCategory.EAT && spot.detourMinutes > 0) {
+                                append(" · 경로 +${spot.detourMinutes}분")
+                            }
+                            append(if (suggestion.asWaypoint) " · 경유지로 넣을까요?" else " · 그쪽으로 안내할까요?")
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = HaegopaColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                BigActionButton(
+                    icon = HaegopaIcons.AddWaypoint,
+                    label = if (suggestion.asWaypoint) "경유지 추가" else "안내 시작",
+                    container = accent,
+                    content = HaegopaColors.OnAccent,
+                    onClick = { onAnswer(CopilotAnswer.ADD) },
+                )
+                Spacer(Modifier.width(8.dp))
+                BigActionButton(
+                    icon = null,
+                    label = "괜찮아요",
+                    container = HaegopaColors.SurfaceHigher,
+                    content = HaegopaColors.TextPrimary,
+                    onClick = { onAnswer(CopilotAnswer.DECLINE) },
                 )
             }
         }

@@ -22,6 +22,9 @@ class GetNearbySpotsUseCase(private val repository: SpotRepository) {
         radiusMeters = radiusMeters,
     )
 
+    /** 출발 위치가 정해지면 가상 스팟을 그 주변에 고정한다 ([SpotRepository.anchorAt]) */
+    fun anchorAt(point: GeoPoint) = repository.anchorAt(point)
+
     companion object {
         const val PAGE_SIZE = 5
     }
