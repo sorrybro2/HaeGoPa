@@ -6,7 +6,8 @@
          일반 폰/태블릿 AVD 시연도 허용하기 위해 required="false" (Pleos App Market 배포 시 true 로 전환 권장) -->
     <uses-feature
         android:name="android.hardware.type.automotive"
-        android:required="false" />
+        android:required="false"
+        tools:replace="android:required" />
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
@@ -32,9 +33,19 @@
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
     <uses-permission android:name="pleos.car.permission.NAVI_NOTIFY" />
-    <!-- Pleos TextToSpeech / SpeechToText (normal). 해고파는 마이크(RECORD_AUDIO)를 쓰지 않는다 -->
+    <!-- Pleos FusedLocation: 차의 현재 위치 (GNSS + 차량 신호 융합). 검색 반경 원의 중심 · 지도가 따라가는 차 위치 -->
+    <uses-permission android:name="ai.pleos.playground.service.location.fused.FUSED_LOCATION_BINDING" />
+    <!-- 위치 서비스가 요구하는 런타임 권한 (protectionLevel=dangerous, Pleos 에뮬레이터 확인) -->
+    <uses-permission android:name="pleos.car.permission.FUSED_LOCATION" />
+    <!-- Pleos TextToSpeech / SpeechToText (normal) -->
     <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
     <uses-permission android:name="pleos.car.permission.STT_SERVICE" />
+    <!-- 음성 코파일럿: "경유지로 넣을까요?" 뒤에 "응 / 아니" 대답을 듣는다. 거부하면 듣지 않고 알림 버튼으로만 고른다 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 음성 코파일럿: 순정 내비가 앞에 있는 동안 해고파가 얼지 않게 하는 포그라운드 서비스 + 헤드업 제안 알림 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Android 11+ 패키지 가시성
@@ -44,6 +55,7 @@
         <package android:name="ai.pleos.playground.service.navi" />
         <package android:name="ai.pleos.playground.service.vehicle" />
         <package android:name="ai.pleos.playground.caas" />
+        <package android:name="ai.pleos.playground.service.location.fused" />
         <package android:name="ai.pleos.playground.service.caas" />
         <!-- Pleos 순정 내비 앱 ([내비에서 보기] 로 화면 전환) -->
         <package android:name="ai.umos.maps.android.navigation.app" />
@@ -87,5 +99,19 @@
                 android:name="distractionOptimized"
                 android:value="true" />
         </activity>
+
+        <!-- 음성 코파일럿: 순정 내비 화면을 띄운 채 연속 운전 시간 · 식사 시간을 보고 음성으로 경유지를 제안 -->
+        <service
+            android:name=".copilot.CopilotService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="In-car voice co-pilot: while the built-in navigation app is in front, keeps watching driving time and meal time, then asks by voice whether to add a nearby rest stop or restaurant as a navigation waypoint." />
+        </service>
+
+        <receiver
+            android:name=".copilot.CopilotActionReceiver"
+            android:exported="false" />
     </application>
 </manifest>

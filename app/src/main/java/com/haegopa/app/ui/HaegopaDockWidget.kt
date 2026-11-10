@@ -541,6 +541,7 @@ private fun SdkStatusFooter(sdk: SdkSummary) {
     val items = listOf(
         "내비" to sdk.navi,
         "차량" to sdk.vehicle,
+        "위치" to sdk.location,
         "음성합성" to sdk.tts,
     )
     Column(Modifier.fillMaxWidth()) {

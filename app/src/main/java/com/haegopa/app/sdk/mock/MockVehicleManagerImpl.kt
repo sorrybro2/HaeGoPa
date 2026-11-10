@@ -23,9 +23,6 @@ class MockVehicleManagerImpl(
     private var extraTripMinutes = initialTripMinutes
 
     @Volatile
-    private var speedKmh = 0
-
-    @Volatile
     private var listener: ((Int) -> Unit)? = null
 
     private val _status = MutableStateFlow(
@@ -39,9 +36,12 @@ class MockVehicleManagerImpl(
     private val _speedSource = MutableStateFlow("PT 데모 시뮬레이터")
     override val speedSource: StateFlow<String> = _speedSource.asStateFlow()
 
+    private val _speedKmh = MutableStateFlow(0)
+    override val speedKmh: StateFlow<Int> = _speedKmh.asStateFlow()
+
     override fun setSpeedChangeListener(listener: (speed: Int) -> Unit) {
         this.listener = listener
-        listener(speedKmh)
+        listener(_speedKmh.value)
     }
 
     override fun getTripDurationMinutes(): Int =
@@ -53,7 +53,7 @@ class MockVehicleManagerImpl(
 
     /** Pleos 게이트웨이가 다른 신호원(VHAL, 기어 연동)의 값을 같은 리스너로 흘려보낼 때 사용 */
     fun emit(speedKmh: Int, source: String) {
-        this.speedKmh = speedKmh
+        _speedKmh.value = speedKmh
         _speedSource.value = source
         listener?.invoke(speedKmh)
     }

@@ -43,15 +43,25 @@ import kotlin.math.roundToInt
  * - 쉬고파: 산책로 · 공원(돗자리 · 차박) · 목욕탕 · 사우나 · 마사지 (산책로 · 공원은 1분 스트레칭)
  * 검색 반경(2 · 5 · 10km · 사용자 지정)에 따라 포함되는 스팟이 달라진다.
  *
- * 스팟은 "현재 위치 기준 거리·방위"로 정의되어 있어, NaviHelper 가 알려준 실제 현재 위치든
- * 가상 위치(판교)든 항상 같은 상대 배치로 나타난다. 상호명은 모두 가상의 이름이다.
+ * 스팟은 "기준점 기준 거리·방위"로 정의되어 있어, NaviHelper 가 알려준 실제 출발 위치든
+ * 가상 위치(판교)든 항상 같은 상대 배치로 깔린다. 상호명은 모두 가상의 이름이다.
  * 각 스팟의 첫 태그는 종류(맛집 · 공원 · 사우나 …)다.
+ *
+ * 차가 움직여도 스팟은 제자리에 있어야 하므로, [anchorAt] 으로 정한 기준점(출발 위치)에 한 번 깔고
+ * 검색할 때마다 차 위치(검색 중심)에서 거리 · 방향 · 소요 시간을 다시 잰다. 기준점을 안 정했으면 검색 중심에 깐다.
  */
 class MockDataRepository(
     private val latencyMillis: Long = DEFAULT_LATENCY_MS,
 ) : SpotRepository {
 
     private val cache = HashMap<GeoPoint, List<Spot>>()
+
+    @Volatile
+    private var anchor: GeoPoint? = null
+
+    override fun anchorAt(point: GeoPoint) {
+        anchor = point
+    }
 
     override suspend fun getNearbySpots(
         category: SpotCategory,
@@ -63,9 +73,10 @@ class MockDataRepository(
         require(page >= 0 && pageSize > 0)
         if (latencyMillis > 0) delay(latencyMillis) // 네트워크 페이지 로딩 흉내 (무한 스크롤 로딩 표시)
 
-        val inRadius = materialize(origin)
+        val inRadius = materialize(anchor ?: origin)
             .asSequence()
             .filter { it.category == category }
+            .map { it.measuredFrom(origin) }
             .filter { it.distanceMeters <= radiusMeters }
             .filter { it.category != EAT || it.detourMinutes <= MAX_EAT_DETOUR_MINUTES }
             .sortedBy { it.distanceMeters }
@@ -81,8 +92,19 @@ class MockDataRepository(
         )
     }
 
-    private fun materialize(origin: GeoPoint): List<Spot> = synchronized(cache) {
-        cache.getOrPut(origin) { SEEDS.map { it.toSpot(origin) } }
+    private fun materialize(anchor: GeoPoint): List<Spot> = synchronized(cache) {
+        cache.getOrPut(anchor) { SEEDS.map { it.toSpot(anchor) } }
+    }
+
+    /** 검색 중심(차 위치)에서 잰 거리 · 방향 · 소요 시간 */
+    private fun Spot.measuredFrom(center: GeoPoint): Spot {
+        val distance = GeoUtils.distanceMeters(center, location).roundToInt()
+        val bearing = GeoUtils.bearingDegrees(center, location)
+        return copy(
+            distanceMeters = distance,
+            etaMinutes = GeoUtils.etaMinutes(distance),
+            address = "현재 위치 ${GeoUtils.bearingToKorean(bearing)}쪽 ${GeoUtils.formatDistance(distance)} (가상 좌표)",
+        )
     }
 
     private data class SpotSeed(

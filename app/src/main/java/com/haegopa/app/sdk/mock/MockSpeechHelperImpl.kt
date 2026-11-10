@@ -11,6 +11,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.haegopa.app.sdk.SdkBackend
@@ -48,6 +49,15 @@ class MockSpeechHelperImpl(context: Context) : SpeechGateway {
     @Volatile
     private var pendingScript: String? = null
 
+    /** speakThen 완료 대기: (토큰, 콜백). 새 문장을 읽으면 비운다 */
+    private val doneSeq = AtomicLong(0)
+
+    @Volatile
+    private var pendingDone: Pair<Long, () -> Unit>? = null
+
+    /** 듣기 요청 토큰. stopListening 이나 새 요청이 오면 바뀌어, 이전 요청의 결과는 버린다 */
+    private val listenSeq = AtomicLong(0)
+
     private val tts: TextToSpeech? = try {
         TextToSpeech(appContext) { status -> onTtsInitialized(status) }
     } catch (t: Throwable) {
@@ -66,6 +76,15 @@ class MockSpeechHelperImpl(context: Context) : SpeechGateway {
         }
         val result = engine.setLanguage(Locale.KOREAN)
         ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
+        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) = Unit
+            override fun onDone(utteranceId: String?) = onUtteranceFinished(utteranceId)
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) = onUtteranceFinished(utteranceId)
+            override fun onError(utteranceId: String?, errorCode: Int) = onUtteranceFinished(utteranceId)
+            override fun onStop(utteranceId: String?, interrupted: Boolean) = onUtteranceFinished(utteranceId)
+        })
         _ttsStatus.value = if (ttsReady) {
             SdkStatus("Android TTS", SdkBackend.ANDROID, "ko-KR")
         } else {
@@ -73,7 +92,7 @@ class MockSpeechHelperImpl(context: Context) : SpeechGateway {
         }
         pendingScript?.let { script ->
             pendingScript = null
-            if (ttsReady) speakNow(script)
+            if (ttsReady) speakNow(script, utteranceId())
         }
     }
 
@@ -83,28 +102,69 @@ class MockSpeechHelperImpl(context: Context) : SpeechGateway {
     }
 
     override fun speakText(script: String) {
+        pendingDone = null
         publishCaption(script)
-        if (ttsReady) speakNow(script) else pendingScript = script
+        if (ttsReady) speakNow(script, utteranceId()) else pendingScript = script
     }
 
-    private fun speakNow(script: String) {
+    override fun speakThen(script: String, onDone: () -> Unit) {
+        val token = doneSeq.incrementAndGet()
+        pendingDone = token to onDone
+        publishCaption(script)
+        val speaking = ttsReady
+        if (speaking) speakNow(script, "$DONE_PREFIX$token") else pendingScript = null
+        // 엔진이 없으면(자막 모드) 읽는 데 걸릴 시간만큼 기다린 뒤 완료.
+        // 엔진이 있으면 onDone 이 기준이고, 이건 이벤트가 끝내 오지 않을 때만 쓰는 넉넉한 안전장치다.
+        val wait = if (speaking) safetyTimeoutMillis(script) else estimatedSpeechMillis(script)
+        mainHandler.postDelayed({ fireDone(token) }, wait)
+    }
+
+    private fun onUtteranceFinished(utteranceId: String?) {
+        val token = utteranceId?.removePrefix(DONE_PREFIX)?.takeIf { it != utteranceId }?.toLongOrNull() ?: return
+        fireDone(token)
+    }
+
+    /** 토큰이 지금 기다리는 문장과 같을 때 한 번만 부른다 */
+    private fun fireDone(token: Long) {
+        val pending = pendingDone ?: return
+        if (pending.first != token) return
+        pendingDone = null
+        mainHandler.post(pending.second)
+    }
+
+    private fun utteranceId() = "haegopa-${captionSeq.get()}"
+
+    private fun speakNow(script: String, utteranceId: String) {
         runCatching {
-            tts?.speak(script, TextToSpeech.QUEUE_FLUSH, null, "haegopa-${captionSeq.get()}")
+            tts?.speak(script, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         }.onFailure { Log.w(TAG, "speak failed", it) }
     }
 
     override fun stopSpeaking() {
         pendingScript = null
+        pendingDone = null
         runCatching { tts?.stop() }
     }
 
+    override val canListen: Boolean
+        get() = micGranted() && runCatching { SpeechRecognizer.isRecognitionAvailable(appContext) }.getOrDefault(false)
+
     override fun startVoiceRecognition(callback: (command: String) -> Unit) {
-        mainHandler.post { startOnMain(callback) }
+        val token = listenSeq.incrementAndGet()
+        mainHandler.post { startOnMain(token, callback) }
     }
 
-    private fun startOnMain(callback: (command: String) -> Unit) {
-        val micGranted = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+    override fun stopListening() {
+        listenSeq.incrementAndGet()
+        mainHandler.post { runCatching { recognizer?.cancel() } }
+    }
+
+    private fun micGranted(): Boolean =
+        ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    private fun startOnMain(token: Long, callback: (command: String) -> Unit) {
+        if (token != listenSeq.get()) return
+        val micGranted = micGranted()
         val available = runCatching { SpeechRecognizer.isRecognitionAvailable(appContext) }.getOrDefault(false)
         if (!micGranted || !available) {
             _sttStatus.value = SdkStatus(
@@ -112,14 +172,14 @@ class MockSpeechHelperImpl(context: Context) : SpeechGateway {
                 SdkBackend.MOCK,
                 if (!micGranted) "마이크 권한 없음" else "STT 엔진 없음",
             )
-            // 빈 문자열 = 인식 불가 → 호출부(ViewModel)가 시뮬레이션 버튼을 안내한다
-            mainHandler.postDelayed({ callback("") }, 400)
+            // 빈 문자열 = 인식 불가 → 호출부가 버튼으로 고르게 안내한다
+            mainHandler.postDelayed({ if (token == listenSeq.get()) callback("") }, 400)
             return
         }
 
         var delivered = false
         fun deliver(text: String) {
-            if (delivered) return
+            if (delivered || token != listenSeq.get()) return
             delivered = true
             callback(text)
         }
@@ -165,7 +225,21 @@ class MockSpeechHelperImpl(context: Context) : SpeechGateway {
         }
     }
 
-    private companion object {
-        const val TAG = "HaegopaSpeechMock"
+    companion object {
+        private const val TAG = "HaegopaSpeechMock"
+        private const val DONE_PREFIX = "haegopa-done-"
+
+        /**
+         * 읽는 데 걸리는 시간 추정. Pleos TTS(seoyoon)는 글자당 약 190ms
+         * (Pleos 에뮬레이터: 공백 뺀 52자 문장이 9.8초) → 글자당 200ms + 0.6초.
+         */
+        fun estimatedSpeechMillis(script: String): Long =
+            600L + script.count { !it.isWhitespace() } * 200L
+
+        /**
+         * 완료 이벤트가 오는 엔진에서 쓰는 안전장치 — 추정보다 일찍 끊으면 TTS 끝부분을 STT 가 듣게 되므로
+         * 추정의 2배 + 2초를 기다린다 (정상이라면 onDone 이 먼저 온다).
+         */
+        fun safetyTimeoutMillis(script: String): Long = estimatedSpeechMillis(script) * 2 + 2_000L
     }
 }

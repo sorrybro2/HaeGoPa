@@ -98,11 +98,12 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    // Pleos Connect SDK — Vehicle(기어·주행시간) / NaviHelper(경유지) / TTS / STT
+    // Pleos Connect SDK — Vehicle(기어·주행시간) / NaviHelper(경유지) / TTS / STT / FusedLocation(차 현재 위치)
     implementation(libs.pleos.vehicle)
     implementation(libs.pleos.navihelper)
     implementation(libs.pleos.tts)
     implementation(libs.pleos.stt)
+    implementation(libs.pleos.fusedlocation)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
