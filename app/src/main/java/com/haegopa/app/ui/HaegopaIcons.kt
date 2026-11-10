@@ -35,6 +35,7 @@ object HaegopaIcons {
     @DrawableRes val Refresh = R.drawable.ic_refresh
     @DrawableRes val ExpandMore = R.drawable.ic_expand_more
     @DrawableRes val ExpandLess = R.drawable.ic_expand_less
+    @DrawableRes val ChevronLeft = R.drawable.ic_chevron_left
     @DrawableRes val NearMe = R.drawable.ic_near_me
     @DrawableRes val Wave = R.drawable.ic_graphic_eq
     @DrawableRes val Logo = R.drawable.ic_logo

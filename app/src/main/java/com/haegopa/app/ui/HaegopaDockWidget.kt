@@ -2,9 +2,15 @@ package com.haegopa.app.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
@@ -77,7 +83,9 @@ data class DockActions(
     val onRefresh: () -> Unit,
     val onSetDestination: (Spot) -> Unit,
     val onAddWaypoint: (Spot) -> Unit,
-    val onOpenDetail: (Spot) -> Unit,
+    /** 카드 터치 → 지도가 그 스팟으로 이동 + (정차 중) 상세 패널 */
+    val onSelectSpot: (Spot) -> Unit,
+    val onCloseDetail: () -> Unit,
     val onPlayDocent: (Spot) -> Unit,
     val onOpenStretching: (String?) -> Unit,
     val onRepeatAnnouncement: () -> Unit,
@@ -88,6 +96,7 @@ data class DockActions(
 /**
  * 와이드 화면 오른쪽 '해고파' 도크.
  * 위에서부터 브랜드·주행 상태 / 먹·놀·쉬 탭 (+ 장시간 운전 알림) / 스팟 목록(정차: 전체 카드, 주행: 동승자용 큰 글씨 목록) / 연동 상태.
+ * 정차 중 스팟을 고르면 목록 자리에 상세 패널이 오른쪽에서 밀려 들어온다 (목록은 뒤에 그대로 있어 스크롤 위치가 유지된다).
  */
 @Composable
 fun HaegopaDockWidget(
@@ -126,6 +135,7 @@ fun HaegopaDockWidget(
                             SpotFeed(state = state, actions = actions)
                         }
                     }
+                    SpotDetailSlot(state = state, actions = actions)
                 }
                 SdkStatusFooter(state.sdk)
             }
@@ -333,7 +343,7 @@ private fun SpotFeed(state: MainUiState, actions: DockActions) {
                 role = state.routeRole(spot),
                 onSetDestination = { actions.onSetDestination(spot) },
                 onAddWaypoint = { actions.onAddWaypoint(spot) },
-                onClick = { actions.onOpenDetail(spot) },
+                onClick = { actions.onSelectSpot(spot) },
                 onPlayDocent = { actions.onPlayDocent(spot) },
                 onOpenStretching = { actions.onOpenStretching(spot.name) },
             )
@@ -417,6 +427,45 @@ private fun FeedFooter(feed: FeedState, radiusMeters: Int, onRefresh: () -> Unit
     }
 }
 
+// ── 정차: 스팟 상세 (목록 위로 오른쪽에서 밀려 들어온다) ─────────────────────────
+
+@Composable
+private fun SpotDetailSlot(state: MainUiState, actions: DockActions) {
+    AnimatedContent(
+        targetState = state.detailSpot,
+        contentKey = { it?.id },
+        transitionSpec = {
+            when {
+                // 목록 → 상세: 오른쪽에서 스윽
+                initialState == null ->
+                    (slideInHorizontally(tween(320)) { it } + fadeIn(tween(200))) togetherWith ExitTransition.None
+                // 상세 → 목록: 오른쪽으로 빠진다
+                targetState == null ->
+                    EnterTransition.None togetherWith (slideOutHorizontally(tween(260)) { it } + fadeOut(tween(200)))
+                // 다른 스팟을 고르면 살짝 밀며 바꾼다
+                else -> (slideInHorizontally(tween(260)) { it / 4 } + fadeIn(tween(220))) togetherWith fadeOut(tween(120))
+            }.using(SizeTransform(clip = false))
+        },
+        modifier = Modifier.fillMaxSize(),
+        label = "spot-detail",
+    ) { spot ->
+        // spot == null 이면 빈 자리 — 터치가 아래 목록으로 그대로 내려간다
+        if (spot != null) {
+            SpotDetailPanel(
+                spot = spot,
+                role = state.routeRole(spot),
+                onBack = actions.onCloseDetail,
+                onSetDestination = { actions.onSetDestination(spot) },
+                onAddWaypoint = { actions.onAddWaypoint(spot) },
+                onPlayDocent = { actions.onPlayDocent(spot) },
+                onOpenStretching = { actions.onOpenStretching(spot.name) },
+            )
+        } else {
+            Box(Modifier.fillMaxSize())
+        }
+    }
+}
+
 // ── 주행: 동승자용 큰 글씨 목록 (스크롤 가능 · 개수 상한) ─────────────────────
 
 @Composable
@@ -464,8 +513,8 @@ private fun DrivingFeed(state: MainUiState, actions: DockActions) {
                     role = state.routeRole(spot),
                     onSetDestination = { actions.onSetDestination(spot) },
                     onAddWaypoint = { actions.onAddWaypoint(spot) },
-                    // 주행 중에는 상세 화면 대신 음성으로 읽어 준다 (ViewModel.openDetail)
-                    onClick = { actions.onOpenDetail(spot) },
+                    // 주행 중에는 상세 패널 대신 음성으로 읽어 주고, 지도만 그 스팟으로 옮긴다 (ViewModel.selectSpot)
+                    onClick = { actions.onSelectSpot(spot) },
                 )
             }
         }

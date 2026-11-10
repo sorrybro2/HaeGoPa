@@ -118,6 +118,7 @@ class MainViewModel(
                     origin = late,
                     originLabel = originLabel(true),
                     feeds = SpotCategory.entries.associateWith { FeedState() },
+                    selectedSpot = null,
                 )
             }
             loadNextPage(_uiState.value.selectedCategory)
@@ -183,7 +184,7 @@ class MainViewModel(
 
     fun selectCategory(category: SpotCategory) {
         if (_uiState.value.selectedCategory == category) return
-        _uiState.update { it.copy(selectedCategory = category) }
+        _uiState.update { it.copy(selectedCategory = category, selectedSpot = null) }
         refreshMapSpots()
         val feed = _uiState.value.feeds.getValue(category)
         if (feed.items.isEmpty() && !feed.endReached) {
@@ -242,6 +243,7 @@ class MainViewModel(
             state.copy(
                 radiusMeters = meters,
                 feeds = SpotCategory.entries.associateWith { FeedState() },
+                selectedSpot = null,
             )
         }
         val driving = _uiState.value.isDriving
@@ -318,18 +320,20 @@ class MainViewModel(
         _messages.tryEmit("경유지를 모두 지웠어요")
     }
 
-    // ── 상세 · 소개 듣기(도슨트) · 스트레칭 (정차 중 전용 인터랙션) ─────────────────────────
+    // ── 스팟 선택 · 소개 듣기(도슨트) · 스트레칭 ──────────────────────────────────
 
-    fun openDetail(spot: Spot) {
-        if (_uiState.value.isDriving) {
-            announceSpot(spot)
-            return
-        }
-        _uiState.update { it.copy(detailSpot = spot) }
+    /**
+     * 목록 카드 · 지도 핀 터치: 지도가 그 스팟으로 이동하고, 정차 중이면 도크에 상세 패널이 밀려 들어온다.
+     * 주행 중에는 상세 대신 음성으로 읽어 준다 (지도 이동은 그대로 — 동승자가 위치를 볼 수 있게).
+     */
+    fun selectSpot(spot: Spot) {
+        _uiState.update { it.copy(selectedSpot = spot) }
+        if (_uiState.value.isDriving) announceSpot(spot)
     }
 
-    fun closeDetail() {
-        _uiState.update { it.copy(detailSpot = null) }
+    /** 상세 패널 [목록] · 지도 빈 곳 터치 → 선택 해제, 지도는 전체 보기로 돌아간다 */
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedSpot = null) }
     }
 
     fun playDocent(spot: Spot) {
@@ -343,7 +347,7 @@ class MainViewModel(
             speak("스트레칭 가이드는 차를 세운 뒤에 열 수 있어요.")
             return
         }
-        _uiState.update { it.copy(stretchingOpen = true, stretchingPlace = placeName, detailSpot = null) }
+        _uiState.update { it.copy(stretchingOpen = true, stretchingPlace = placeName) }
     }
 
     fun closeStretching() {
@@ -365,10 +369,12 @@ class MainViewModel(
         val previous = _uiState.value.driveMode
         _uiState.update { state ->
             val driving = speedKmh > 0
+            val modeChanged = DriveMode.fromSpeed(speedKmh) != state.driveMode
             state.copy(
                 speedKmh = speedKmh,
-                // 주행 시작 시 정차 전용 화면(상세, 스트레칭)을 즉시 닫는다
-                detailSpot = if (driving) null else state.detailSpot,
+                // 주행이 시작되거나 멈추면 고른 스팟을 풀고 지도 전체 보기로 (상세 패널도 닫힌다)
+                selectedSpot = if (modeChanged) null else state.selectedSpot,
+                // 주행 시작 시 정차 전용 화면(스트레칭, 반경 설정)을 즉시 닫는다
                 stretchingOpen = if (driving) false else state.stretchingOpen,
                 radiusDialogOpen = if (driving) false else state.radiusDialogOpen,
             )

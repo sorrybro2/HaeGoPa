@@ -44,7 +44,11 @@ data class MainUiState(
     val gear: GearPosition = GearPosition.UNKNOWN,
     val tripMinutes: Int = 0,
     val waypoints: List<Waypoint> = emptyList(),
-    val detailSpot: Spot? = null,
+    /**
+     * 목록 카드나 지도 핀을 눌러 고른 스팟. 지도가 이 스팟으로 이동(확대)하고,
+     * 정차 중이면 오른쪽 도크에 상세 패널이 밀려 들어온다 (주행 중에는 음성 안내만).
+     */
+    val selectedSpot: Spot? = null,
     val stretchingOpen: Boolean = false,
     val stretchingPlace: String? = null,
     val fatigueNudgeVisible: Boolean = false,
@@ -54,6 +58,9 @@ data class MainUiState(
     val driveMode: DriveMode get() = DriveMode.fromSpeed(speedKmh)
     val isDriving: Boolean get() = driveMode == DriveMode.DRIVING
     val currentFeed: FeedState get() = feeds.getValue(selectedCategory)
+
+    /** 도크에 상세 패널을 띄울 스팟 — 정차 중에만 (Driver Distraction) */
+    val detailSpot: Spot? get() = selectedSpot?.takeUnless { isDriving }
 
     /** 이 스팟이 순정 내비 경로에서 맡은 역할 (목적지 / 경유지 / 없음) — [목적지]·[경유지] 버튼 상태 */
     fun routeRole(spot: Spot): WaypointKind? = waypoints.firstOrNull { it.name == spot.name }?.kind

@@ -1,11 +1,14 @@
 package com.haegopa.app.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -37,12 +40,14 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haegopa.app.domain.model.GeoPoint
@@ -74,6 +79,15 @@ private const val SCREEN_DP_PER_KMH = 0.8f
 /** 도시 격자를 화면 축에서 살짝 비틀어 '모눈종이' 느낌을 없앤다 */
 private const val GRID_ANGLE = -14f
 
+/** 스팟을 고르면 지도가 그 스팟을 화면 가운데로 끌어오며 이만큼 확대한다 */
+private const val FOCUS_ZOOM = 1.9f
+private const val FOCUS_PIN_SCALE = 1.4f
+private const val CAMERA_MS = 650
+
+/** 화면 세로 위치: 전체 보기의 현재 위치 / 확대 보기의 고른 스팟 (위 칩 · 아래 카드를 피한 가운데) */
+private const val ORIGIN_ANCHOR_Y = 0.56f
+private const val FOCUS_ANCHOR_Y = 0.47f
+
 /**
  * 해고파 '주변 스팟 지도'.
  *
@@ -83,6 +97,9 @@ private const val GRID_ANGLE = -14f
  *
  * 지도 타일 없이 Canvas 로 그리는 일러스트 지도: 고정 시드로 만든 가상의 도시(블록·공원·강·간선도로) 위에
  * 실제 좌표(현재 위치 대비 동·북 거리)로 핀을 투영한다. 정적 레이어와 동적 레이어(현재 위치 펄스·경로 흐름)를 나눠 그린다.
+ *
+ * 목록 카드나 핀을 눌러 [selected] 가 생기면 카메라가 그 스팟으로 스윽 이동·확대하고 핀을 강조한다.
+ * 핀을 누르면 [onSpotTap], 빈 곳을 누르면 [onBackgroundTap] (선택 해제 → 전체 보기).
  */
 @Composable
 fun SpotMap(
@@ -93,6 +110,9 @@ fun SpotMap(
     speedKmh: Int,
     modifier: Modifier = Modifier,
     radiusMeters: Int = SearchRadius.DEFAULT_METERS,
+    selected: Spot? = null,
+    onSpotTap: (Spot) -> Unit = {},
+    onBackgroundTap: () -> Unit = {},
 ) {
     val palette = LocalHaegopaPalette.current
     val map = palette.map
@@ -131,10 +151,37 @@ fun SpotMap(
         }
     }
 
-    Box(modifier.clipToBounds()) {
+    // 카메라: 고른 스팟이 있으면 그 스팟을 (가로 중앙, FOCUS_ANCHOR_Y)로 끌어오며 확대, 없으면 현재 위치 중심 전체 보기.
+    // 값은 그리기 단계에서만 읽어 애니메이션 중에도 재구성 없이 다시 그리기만 한다.
+    val focus = selected?.let { GeoUtils.toLocalMeters(origin, it.location) }
+    val cameraSpec = tween<Float>(durationMillis = CAMERA_MS, easing = FastOutSlowInEasing)
+    val zoom = animateFloatAsState(if (focus != null) FOCUS_ZOOM else 1f, cameraSpec, label = "camera-zoom")
+    val east = animateFloatAsState(focus?.first?.toFloat() ?: 0f, cameraSpec, label = "camera-east")
+    val north = animateFloatAsState(focus?.second?.toFloat() ?: 0f, cameraSpec, label = "camera-north")
+    val anchorY = animateFloatAsState(if (focus != null) FOCUS_ANCHOR_Y else ORIGIN_ANCHOR_Y, cameraSpec, label = "camera-anchor")
+    fun camera() = Camera(zoom.value, east.value, north.value, anchorY.value)
+
+    val tapSpots by rememberUpdatedState(spots)
+    val tapSelected by rememberUpdatedState(selected)
+    val tapOrigin by rememberUpdatedState(origin)
+    val tapRadius by rememberUpdatedState(radiusMeters)
+    val tapSpot by rememberUpdatedState(onSpotTap)
+    val tapBackground by rememberUpdatedState(onBackgroundTap)
+
+    Box(
+        modifier
+            .clipToBounds()
+            .pointerInput(Unit) {
+                detectTapGestures { tap ->
+                    val geo = MapGeometry(size.width.toFloat(), size.height.toFloat(), tapRadius, camera())
+                    val hit = hitTestPin(tap, geo, tapOrigin, tapSpots, tapSelected)
+                    if (hit != null) tapSpot(hit) else tapBackground()
+                }
+            },
+    ) {
         // ── 정적 레이어: 도시 · 반경 · 경로 · 핀 ──
         Canvas(Modifier.fillMaxSize()) {
-            val geo = MapGeometry(size.width, size.height, radiusMeters)
+            val geo = MapGeometry(size.width, size.height, radiusMeters, camera())
             drawRect(map.base)
             drawCity(geo, map)
 
@@ -177,24 +224,35 @@ fun SpotMap(
                 fontSize = 13,
             )
 
-            // 스팟 핀 (가까운 순 = 목록 순서). 1위는 조금 크게
-            val pins = spots.mapIndexedNotNull { index, spot ->
+            // 스팟 핀 (가까운 순 = 목록 순서). 1위는 조금 크게, 고른 스팟은 더 크게 맨 위에
+            val margin = 24.dp.toPx()
+            val pins = pinsOf(spots, selected).mapIndexedNotNull { index, spot ->
                 val p = geo.project(origin, spot.location)
-                val margin = 24.dp.toPx()
+                val focused = spot.id == selected?.id
                 val inside = p.x in -margin..(size.width + margin) && p.y in -margin..(size.height + margin)
-                if (inside) Triple(spot, p, index == 0) else null
+                if (!inside && !focused) return@mapIndexedNotNull null
+                val scale = when {
+                    focused -> FOCUS_PIN_SCALE
+                    index == 0 -> 1.18f
+                    else -> 1f
+                }
+                MapPin(spot, tip = p, head = Offset(p.x, p.y - pinHeadLift() * scale), scale = scale, focused = focused)
             }
-            pins.asReversed().forEach { (_, p, first) ->
-                val head = drawPin(p, if (first) 1.18f else 1f, accent, pinIcon)
-                occupied += head
+            val focusedPin = pins.firstOrNull { it.focused }
+            (pins.asReversed().filterNot { it.focused } + listOfNotNull(focusedPin)).forEach { pin ->
+                occupied += drawPin(pin.tip, pin.scale, accent, pinIcon)
             }
 
-            // 이름 라벨: 가까운 곳부터, 다른 요소와 겹치지 않는 자리에만
+            // 이름 라벨: 고른 스팟은 강조색으로 먼저 자리를 잡고, 나머지는 가까운 곳부터 겹치지 않는 자리에만
+            if (focusedPin != null) {
+                placeLabel(textMeasurer, focusedPin.spot.name, focusedPin.head, occupied, map, emphasize = true, highlight = accent, force = true)
+                    ?.let { occupied += it }
+            }
             var labeled = 0
-            for ((spot, p, first) in pins) {
+            for (pin in pins) {
                 if (labeled >= MAX_PIN_LABELS) break
-                val headCenter = Offset(p.x, p.y - pinHeadLift() * (if (first) 1.18f else 1f))
-                val rect = placeLabel(textMeasurer, spot.name, headCenter, occupied, map, first) ?: continue
+                if (pin.focused) continue
+                val rect = placeLabel(textMeasurer, pin.spot.name, pin.head, occupied, map, emphasize = pin.scale > 1f) ?: continue
                 occupied += rect
                 labeled += 1
             }
@@ -220,9 +278,23 @@ fun SpotMap(
             }
         }
 
-        // ── 동적 레이어: 달리는 차 · 지나온 길 ──
+        // ── 동적 레이어: 고른 스팟 물결 · 달리는 차 · 지나온 길 ──
         Canvas(Modifier.fillMaxSize()) {
-            val geo = MapGeometry(size.width, size.height, radiusMeters)
+            val geo = MapGeometry(size.width, size.height, radiusMeters, camera())
+
+            // 고른 스팟: 핀 머리 둘레로 퍼지는 물결 (지도가 옮겨 간 곳이 어디인지 바로 보이게)
+            selected?.let { spot ->
+                val tip = geo.project(origin, spot.location)
+                val head = Offset(tip.x, tip.y - pinHeadLift() * FOCUS_PIN_SCALE)
+                val headRadius = 14.dp.toPx() * FOCUS_PIN_SCALE
+                drawCircle(
+                    color = accent.copy(alpha = (1f - pulse) * 0.6f),
+                    radius = headRadius + 4.dp.toPx() + pulse * 28.dp.toPx(),
+                    center = head,
+                    style = Stroke(3.dp.toPx()),
+                )
+            }
+
             val route = buildRoute(geo, origin, waypoints)
             val measure = PathMeasure().apply { setPath(route.path, false) }
             val visible = visibleLength(measure, geo, size)
@@ -265,12 +337,25 @@ fun SpotMap(
 
 // ── 좌표계 ───────────────────────────────────────────────────────────────────
 
-/** 화면 크기 → 투영 파라미터 (현재 위치는 가로 중앙 · 세로 56% 지점, 검색 반경 원이 화면 안에 들어오도록) */
-private class MapGeometry(val width: Float, val height: Float, radiusMeters: Int) {
-    val center = Offset(width * 0.5f, height * 0.56f)
-    val radiusPx = min(width, height) * 0.40f
+/**
+ * 지도 카메라: [zoom] 배율로, 현재 위치에서 동 [east] · 북 [north] 미터 떨어진 지점을 화면 (가로 중앙, 세로 [anchorY])에 둔다.
+ * 전체 보기는 현재 위치(0, 0)를 세로 56% 지점에 둔 1배 화면.
+ */
+private class Camera(val zoom: Float, val east: Float, val north: Float, val anchorY: Float) {
+    companion object {
+        val Overview = Camera(zoom = 1f, east = 0f, north = 0f, anchorY = ORIGIN_ANCHOR_Y)
+    }
+}
+
+/** 화면 크기 + 카메라 → 투영 파라미터 (전체 보기에서는 검색 반경 원이 화면 안에 들어오도록) */
+private class MapGeometry(val width: Float, val height: Float, radiusMeters: Int, camera: Camera = Camera.Overview) {
+    val zoom = camera.zoom
+    val radiusPx = min(width, height) * 0.40f * zoom
     val grid = radiusPx * 0.21f
     private val pxPerMeter = radiusPx / radiusMeters
+
+    /** 현재 위치(원점)의 화면 좌표. 카메라가 보는 지점이 (가로 중앙, anchorY)에 오도록 원점을 옮긴다 */
+    val center = Offset(width * 0.5f - camera.east * pxPerMeter, height * camera.anchorY + camera.north * pxPerMeter)
     private val cosA = cos(Math.toRadians(GRID_ANGLE.toDouble())).toFloat()
     private val sinA = sin(Math.toRadians(GRID_ANGLE.toDouble())).toFloat()
 
@@ -298,6 +383,34 @@ private class MapGeometry(val width: Float, val height: Float, radiusMeters: Int
 }
 
 private class Route(val path: Path, val headingDegrees: Float)
+
+private class MapPin(val spot: Spot, val tip: Offset, val head: Offset, val scale: Float, val focused: Boolean)
+
+/** 지도에 꽂을 스팟: 반경 안 스팟 + (목록 뒤쪽 페이지에서 골라 아직 없는) 고른 스팟 */
+private fun pinsOf(spots: List<Spot>, selected: Spot?): List<Spot> =
+    if (selected == null || spots.any { it.id == selected.id }) spots else spots + selected
+
+/** 터치한 자리에서 가장 가까운 핀(머리 ~ 끝 사이 막대 기준). 손가락 크기를 감안해 넉넉히 잡는다 */
+private fun Density.hitTestPin(tap: Offset, geo: MapGeometry, origin: GeoPoint, spots: List<Spot>, selected: Spot?): Spot? {
+    val slop = 20.dp.toPx()
+    return pinsOf(spots, selected)
+        .map { spot ->
+            val tip = geo.project(origin, spot.location)
+            val scale = if (spot.id == selected?.id) FOCUS_PIN_SCALE else 1f
+            val head = Offset(tip.x, tip.y - 22.dp.toPx() * scale)
+            spot to distanceToSegment(tap, head, tip) - 14.dp.toPx() * scale
+        }
+        .filter { (_, distance) -> distance <= slop }
+        .minByOrNull { (_, distance) -> distance }
+        ?.first
+}
+
+private fun distanceToSegment(p: Offset, a: Offset, b: Offset): Float {
+    val ab = b - a
+    val lengthSq = ab.x * ab.x + ab.y * ab.y
+    val t = if (lengthSq == 0f) 0f else (((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / lengthSq).coerceIn(0f, 1f)
+    return (p - (a + ab * t)).getDistance()
+}
 
 /** 경로가 화면 밖으로 나가기 전까지의 길이 — 차가 화면 안 구간만 반복해서 달리게 한다 */
 private fun visibleLength(measure: PathMeasure, geo: MapGeometry, size: Size): Float {
@@ -367,7 +480,9 @@ private fun isPark(i: Int, j: Int): Boolean =
 private fun DrawScope.drawCity(geo: MapGeometry, map: MapPalette) {
     val s = geo.grid
     val c = geo.center
-    val n = (hypot(size.width, size.height) / s / 2f).toInt() + 2
+    // 카메라가 원점을 화면 가운데에서 밀어낸 만큼 블록을 더 깐다
+    val shift = hypot(c.x - size.width / 2f, c.y - size.height / 2f)
+    val n = ((hypot(size.width, size.height) / 2f + shift) / s).toInt() + 2
     val minorWidth = 3.5.dp.toPx()
     val inset = minorWidth / 2f + 1.5.dp.toPx()
     val corner = CornerRadius(3.dp.toPx())
@@ -400,12 +515,20 @@ private fun DrawScope.drawCity(geo: MapGeometry, map: MapPalette) {
         }
     }
 
-    // 강: 화면 아래쪽을 가로지르는 넓은 물길 (다리 역할을 하는 간선도로가 위에 그려진다)
+    // 강 · 도시고속도로는 원점(c) 기준 '세계 좌표'로 그려 카메라 이동 · 확대를 그대로 따라간다.
+    // wx(f) = 전체 보기에서 화면 가로 f 지점. 양 끝은 화면 밖까지 곧게 늘여 옆으로 옮겨 가도 끊기지 않게 한다
     val r = geo.radiusPx
+    fun wx(f: Float) = c.x + (f - 0.5f) * size.width * geo.zoom
+    val edge = 60f * geo.zoom
+    val reach = size.width * 2f
+
+    // 강: 화면 아래쪽을 가로지르는 넓은 물길 (다리 역할을 하는 간선도로가 위에 그려진다)
     val river = Path().apply {
-        moveTo(-60f, c.y + r * 1.12f)
-        cubicTo(size.width * 0.28f, c.y + r * 0.86f, size.width * 0.52f, c.y + r * 1.32f, size.width * 0.78f, c.y + r * 1.02f)
-        cubicTo(size.width * 0.90f, c.y + r * 0.90f, size.width * 0.97f, c.y + r * 0.98f, size.width + 60f, c.y + r * 0.92f)
+        moveTo(wx(0f) - edge - reach, c.y + r * 1.12f)
+        lineTo(wx(0f) - edge, c.y + r * 1.12f)
+        cubicTo(wx(0.28f), c.y + r * 0.86f, wx(0.52f), c.y + r * 1.32f, wx(0.78f), c.y + r * 1.02f)
+        cubicTo(wx(0.90f), c.y + r * 0.90f, wx(0.97f), c.y + r * 0.98f, wx(1f) + edge, c.y + r * 0.92f)
+        lineTo(wx(1f) + edge + reach, c.y + r * 0.92f)
     }
     drawPath(river, map.water, style = Stroke(width = r * 0.26f, cap = StrokeCap.Round, join = StrokeJoin.Round))
 
@@ -432,8 +555,10 @@ private fun DrawScope.drawCity(geo: MapGeometry, map: MapPalette) {
 
     // 도시고속도로: 화면 위쪽을 부드럽게 가로지른다
     val highway = Path().apply {
-        moveTo(-60f, c.y - r * 1.05f)
-        cubicTo(size.width * 0.30f, c.y - r * 1.45f, size.width * 0.62f, c.y - r * 0.80f, size.width + 60f, c.y - r * 1.25f)
+        moveTo(wx(0f) - edge - reach, c.y - r * 1.05f)
+        lineTo(wx(0f) - edge, c.y - r * 1.05f)
+        cubicTo(wx(0.30f), c.y - r * 1.45f, wx(0.62f), c.y - r * 0.80f, wx(1f) + edge, c.y - r * 1.25f)
+        lineTo(wx(1f) + edge + reach, c.y - r * 1.25f)
     }
     drawPath(highway, map.highwayCasing, style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round))
     drawPath(highway, map.highway, style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round))
@@ -488,30 +613,35 @@ private fun DrawScope.placeLabel(
     occupied: List<Rect>,
     map: MapPalette,
     emphasize: Boolean,
+    highlight: Color? = null,
+    force: Boolean = false,
 ): Rect? {
     val style = TextStyle(
         fontFamily = Pretendard,
-        fontSize = if (emphasize) 14.sp else 13.sp,
+        fontSize = if (highlight != null) 16.sp else if (emphasize) 14.sp else 13.sp,
         fontWeight = if (emphasize) FontWeight.Bold else FontWeight.SemiBold,
-        color = map.chipText,
+        color = if (highlight != null) HaegopaColors.OnAccent else map.chipText,
     )
     val layout = measurer.measure(text, style)
     val padX = 8.dp.toPx()
     val padY = 4.dp.toPx()
     val w = layout.size.width + padX * 2
     val h = layout.size.height + padY * 2
-    val gap = 18.dp.toPx()
+    val gap = (if (highlight != null) 26 else 18).dp.toPx() // 고른 핀은 머리가 커서 더 띄운다
     val candidates = listOf(
         Offset(head.x + gap, head.y - h / 2), // 오른쪽
         Offset(head.x - gap - w, head.y - h / 2), // 왼쪽
         Offset(head.x - w / 2, head.y - gap - h), // 위
         Offset(head.x - w / 2, head.y + gap + 6.dp.toPx()), // 아래
     )
-    val rect = candidates.map { Rect(it, Size(w, h)) }.firstOrNull { r ->
-        r.left >= 0f && r.top >= 0f && r.right <= size.width && r.bottom <= size.height && occupied.none { it.overlaps(r) }
-    } ?: return null
+    val rects = candidates.map { Rect(it, Size(w, h)) }
+    fun onScreen(r: Rect) = r.left >= 0f && r.top >= 0f && r.right <= size.width && r.bottom <= size.height
+    // force: 고른 스팟 라벨은 빈자리가 없어도 화면 안 첫 자리에 그린다
+    val rect = rects.firstOrNull { r -> onScreen(r) && occupied.none { it.overlaps(r) } }
+        ?: (if (force) rects.firstOrNull(::onScreen) ?: rects.first() else null)
+        ?: return null
     drawRoundRect(Color.Black.copy(alpha = 0.10f), rect.topLeft + Offset(0f, 1.5.dp.toPx()), rect.size, CornerRadius(10.dp.toPx()))
-    drawRoundRect(map.chip, rect.topLeft, rect.size, CornerRadius(10.dp.toPx()))
+    drawRoundRect(highlight ?: map.chip, rect.topLeft, rect.size, CornerRadius(10.dp.toPx()))
     drawText(layout, topLeft = Offset(rect.left + padX, rect.top + padY))
     return rect
 }
