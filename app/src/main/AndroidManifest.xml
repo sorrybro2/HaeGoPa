@@ -40,7 +40,8 @@
     <!-- Pleos TextToSpeech / SpeechToText (normal) -->
     <uses-permission android:name="pleos.car.permission.TTS_SERVICE" />
     <uses-permission android:name="pleos.car.permission.STT_SERVICE" />
-    <!-- 음성 코파일럿: "경유지로 넣을까요?" 뒤에 "응 / 아니" 대답을 듣는다. 거부하면 듣지 않고 알림 버튼으로만 고른다 -->
+    <!-- 음성 코파일럿: "경유지로 넣을까요?" 뒤에 "응 / 아니" 대답을 듣는다. 거부하면 듣지 않고 알림 버튼으로만 고른다.
+         공모전 베타는 음성 대답을 꺼 두어(haegopa.copilotVoiceReply=false) 이 권한을 요청하지 않는다 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 음성 코파일럿: 순정 내비가 앞에 있는 동안 해고파가 얼지 않게 하는 포그라운드 서비스 + 헤드업 제안 알림 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

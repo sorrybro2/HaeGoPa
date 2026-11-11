@@ -17,6 +17,9 @@ val hasReleaseKeystore = keystorePropsFile.exists()
 
 val teamName: String = providers.gradleProperty("haegopa.teamName").getOrElse("TEAM")
 
+// 음성 코파일럿의 "응 / 아니" 음성 대답(Pleos STT). 공모전 베타에서는 꺼 둔다 (gradle.properties 참고)
+val copilotVoiceReply: Boolean = providers.gradleProperty("haegopa.copilotVoiceReply").map { it.toBoolean() }.getOrElse(false)
+
 android {
     namespace = "com.haegopa.app"
     compileSdk = 35
@@ -27,6 +30,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0-prototype"
+        buildConfigField("boolean", "COPILOT_VOICE_REPLY", copilotVoiceReply.toString())
     }
 
     // AAOS Car API (CarPropertyManager → VHAL PERF_VEHICLE_SPEED).
