@@ -28,6 +28,12 @@ data class CopilotConfig(
     ),
     /** 순정 내비 경유지 슬롯 (NaviHelper WaypointIndex FIRST · SECOND) */
     val maxWaypoints: Int = 2,
+    /**
+     * 질문 뒤 Pleos STT 로 "응 / 아니" 대답을 들을지.
+     * 공모전 베타 앱은 false (BuildConfig.COPILOT_VOICE_REPLY) — 실차 마이크로 인식을 확인한 뒤 켠다.
+     * false 면 마이크가 있어도 듣지 않고 알림 · 배너 버튼만 기다린다.
+     */
+    val voiceReply: Boolean = true,
 )
 
 /** 지금 상황 (엔진이 SDK 에서 모아 넘긴다) */

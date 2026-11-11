@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
  *   2. Pleos STT 로 듣고   — "응" / "목적지로" / "아니"
  *   3. NaviHelper 로 보낸다 — addWaypoint(경유지) · requestRoute(목적지) → 순정 내비 경로가 바로 바뀜
  * 말로 못 하면 헤드업 알림 · 해고파 배너의 [경유지 추가] · [괜찮아요] 버튼으로 고른다.
+ * 공모전 베타는 2번을 꺼 둔다([CopilotConfig.voiceReply] = false): 묻고 → 버튼으로 고른다.
  *
  * 언제 말을 거는지는 [CopilotPolicy], 무슨 말을 하는지는 [CopilotScripts] 가 정한다.
  * 모든 메서드는 메인 스레드에서 불린다 (SDK 콜백은 게이트웨이가 메인으로 넘겨 준다).
@@ -69,6 +70,9 @@ class CopilotEngine(
     private var seq = 0L
     private var hintGiven = false
     private var reprompted = false
+
+    /** 대답을 말로 들을 수 있나 — 음성 대답이 켜져 있고(베타는 꺼짐) 마이크 · STT 가 준비됨 */
+    private val canListen: Boolean get() = config.voiceReply && speech.canListen
 
     init {
         if (settings.enabled) startLoop()
@@ -166,7 +170,7 @@ class CopilotEngine(
             reason = decision.reason,
         ) ?: return false
 
-        val withHint = !hintGiven && speech.canListen
+        val withHint = !hintGiven && canListen
         if (withHint) hintGiven = true
         val suggestion = CopilotSuggestion(
             id = ++seq,
@@ -193,7 +197,7 @@ class CopilotEngine(
         val suggestion = active(id) ?: return
         if (_state.value.phase != CopilotPhase.SPEAKING) return
         val heard = _state.value.heard
-        if (speech.canListen) {
+        if (canListen) {
             setPhase(suggestion, CopilotPhase.LISTENING, heard)
             speech.startVoiceRecognition { text -> onHeard(id, text) }
         } else {

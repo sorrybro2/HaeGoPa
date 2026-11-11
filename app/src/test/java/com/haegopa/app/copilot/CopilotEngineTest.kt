@@ -79,13 +79,12 @@ class CopilotEngineTest {
         override fun dayKey(): String = "2026-11-10"
     }
 
-    private class Harness(scope: TestScope, tripMinutes: Int = 30) {
+    private class Harness(scope: TestScope, tripMinutes: Int = 30, val config: CopilotConfig = CopilotConfig()) {
         val navi = MockNaviHelperImpl()
         val vehicle = MockVehicleManagerImpl(clock = { 0L }, initialTripMinutes = tripMinutes)
         val speech = FakeSpeech()
         val visible = MutableStateFlow(false)
         val clock = FakeClock(scope)
-        val config = CopilotConfig()
         val engine = CopilotEngine(
             scope = scope.backgroundScope,
             getNearbySpots = GetNearbySpotsUseCase(MockDataRepository(latencyMillis = 0)),
@@ -225,6 +224,25 @@ class CopilotEngineTest {
         assertTrue("no answer hint without a mic", !h.speech.spoken.last().contains("대답해 주세요"))
         h.speech.finishSpeaking()
         assertEquals(CopilotPhase.WAITING_TAP, h.phase)
+    }
+
+    @Test
+    fun `contest beta with voice reply off asks, never listens, and the button adds the waypoint`() = runTest {
+        val h = Harness(this, tripMinutes = 130, config = CopilotConfig(voiceReply = false))
+        h.guiding()
+        h.engine.evaluate()
+        // 마이크가 있어도 "응, 아니로 대답해 주세요" 안내를 하지 않는다
+        val question = h.speech.spoken.last()
+        assertTrue(question, question.endsWith("경유지로 넣을까요?"))
+
+        h.speech.finishSpeaking()
+        assertEquals(CopilotPhase.WAITING_TAP, h.phase)
+        assertTrue("must not open the mic", !h.speech.listening)
+
+        h.engine.answer(h.active!!.id, CopilotAnswer.ADD, AnswerSource.BUTTON)
+        assertEquals(1, h.navi.waypointCount)
+        assertEquals("경유지 1로 추가 · 버튼", h.engine.state.value.lastLog?.text)
+        assertEquals(0, h.speech.stopListeningCalls)
     }
 
     @Test

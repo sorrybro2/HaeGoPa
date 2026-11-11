@@ -1,6 +1,8 @@
 package com.haegopa.app.di
 
 import android.content.Context
+import com.haegopa.app.BuildConfig
+import com.haegopa.app.copilot.CopilotConfig
 import com.haegopa.app.copilot.CopilotEngine
 import com.haegopa.app.copilot.CopilotNotifications
 import com.haegopa.app.copilot.CopilotService
@@ -65,6 +67,7 @@ class AppContainer(context: Context) {
             speech = speechHelper,
             appVisible = appVisible,
             settings = PrefsCopilotSettings(appContext),
+            config = CopilotConfig(voiceReply = BuildConfig.COPILOT_VOICE_REPLY),
         ).also { it.presenter = copilotNotifications }
     }
 
