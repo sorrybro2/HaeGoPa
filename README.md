@@ -22,7 +22,7 @@ Pleos Connect를 위한 **차량 네이티브** 인포테인먼트 앱 · **Pleo
 | **팀명** | 하고싶은거만할게 (WannaDoGonnaGo) |
 | **한 줄 소개** | 차 위치 기준 반경(기본 2km) 안에서 먹을 곳(맛집 · 카페), 놀 곳(공원 · 백화점 · 놀이공원 · 명소), 쉴 곳(산책로 · 공원 · 목욕탕 · 사우나 · 마사지)을 가까운 순으로 추천하고, 카드의 **[목적지] · [경유지]** 한 번으로 Pleos 순정 내비 길안내까지 이어 주는 차량 전용 앱. 순정 내비를 띄워 둔 채 달려도 식사 시간 · 장거리 운전 때 **음성으로 먼저 권하고, [경유지 추가] 한 번으로 경유지에 넣어 줍니다.** |
 | **버전** | **공모전 베타** — Pleos Connect Emulator에서 직접 확인한 기능만 켜 두었습니다. 말로 대답하기(STT) 등은 [합격 후 도입 예정 기능](#-합격-후-도입-예정-기능)에 정리했습니다 |
-| **APK 위치** | [`apk/WannaDoGonnaGo_HAEGOPA_release.apk`](apk/) · [GitHub Release에서 내려받기](https://github.com/sorrybro2/HaeGoPa/releases/latest) — release 빌드 (약 44MB) |
+| **APK 위치** | [`apk/WannaDoGonnaGo_HAEGOPA_release.apk`](apk/WannaDoGonnaGo_HAEGOPA_release.apk) — release 빌드 (약 44MB) |
 | **권장 테스트 환경** | Pleos Connect Emulator v2.1.0 (Automotive · API 34 · 화면 2560×1440 · 160dpi) — ✅ 실기 검증 완료 ([검증 현황](#검증-현황)) |
 | **보조 테스트 환경** | 일반 Android AVD (API 28 이상, 폰·태블릿). Pleos SDK가 없으면 내장 Mock으로 자동 전환되어 모든 화면을 시연할 수 있음 |
 | **필요한 설정** | 없음. 처음 실행하면 차속 · 차 위치(Pleos FusedLocation) · 알림 권한을 묻습니다(`adb install -g` 로 미리 허용 가능). 거부해도 앱은 동작합니다. 베타는 마이크를 쓰지 않습니다. (선택) Virtual Console 연결 `adb forward tcp:8088 tcp:8088` |
@@ -99,7 +99,7 @@ adb shell am start -n com.haegopa.app/.MainActivity
 | README: 실행 방법 | ✅ [빌드 & 실행 가이드](#%EF%B8%8F-빌드--실행-가이드) |
 | README: 테스트 환경 및 필요한 설정 | ✅ [테스트 환경](#테스트-환경) |
 | README: 사용한 Pleos Connect 에뮬레이터 버전과 화면 규격 | ✅ v2.1.0 · API 34 · 2560×1440 · 160dpi ([바로 실행하기](#-바로-실행하기-심사용-요약)) |
-| README: APK 위치 또는 GitHub Release 링크 | ✅ `apk/` 폴더 · [GitHub Release](https://github.com/sorrybro2/HaeGoPa/releases/latest) |
+| README: APK 위치 또는 GitHub Release 링크 | ✅ [`apk/`](apk/) 폴더 (44MB · 용량 이내라 Release 없이 저장소에 바로 올림) |
 | APK 파일명 `팀명_앱이름_release.apk`, 실행 가능한 release 버전 | ✅ `apk/WannaDoGonnaGo_HAEGOPA_release.apk` (팀 하고싶은거만할게 · `./gradlew exportCompetitionApk`) |
 | 개발 환경: API 28+ · Gradle 8.0+ · Kotlin | ✅ minSdk 28 · Gradle 8.11.1 · Kotlin 2.1.10 |
 | 가산점: GitHub 저장소(소스 + APK) | ✅ 이 저장소 (공개) |
