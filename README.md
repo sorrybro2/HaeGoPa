@@ -19,15 +19,16 @@ Pleos Connect를 위한 **차량 네이티브** 인포테인먼트 앱 · **Pleo
 | 항목 | 내용 |
 |---|---|
 | **앱 이름** | 해고파 (HAEGOPA) · 패키지 `com.haegopa.app` |
+| **팀명** | 하고싶은거만할게 (WannaDoGonnaGo) |
 | **한 줄 소개** | 차 위치 기준 반경(기본 2km) 안에서 먹을 곳(맛집 · 카페), 놀 곳(공원 · 백화점 · 놀이공원 · 명소), 쉴 곳(산책로 · 공원 · 목욕탕 · 사우나 · 마사지)을 가까운 순으로 추천하고, 카드의 **[목적지] · [경유지]** 한 번으로 Pleos 순정 내비 길안내까지 이어 주는 차량 전용 앱. 순정 내비를 띄워 둔 채 달려도 식사 시간 · 장거리 운전 때 **음성으로 먼저 권하고, [경유지 추가] 한 번으로 경유지에 넣어 줍니다.** |
 | **버전** | **공모전 베타** — Pleos Connect Emulator에서 직접 확인한 기능만 켜 두었습니다. 말로 대답하기(STT) 등은 [합격 후 도입 예정 기능](#-합격-후-도입-예정-기능)에 정리했습니다 |
-| **APK 위치** | [`apk/TEAM_HAEGOPA_release.apk`](apk/) — release 빌드 (약 44MB) |
+| **APK 위치** | [`apk/WannaDoGonnaGo_HAEGOPA_release.apk`](apk/) — release 빌드 (약 44MB) |
 | **권장 테스트 환경** | Pleos Connect Emulator v2.1.0 (Automotive · API 34 · 2560×1440) — ✅ 실기 검증 완료 ([검증 현황](#검증-현황)) |
 | **보조 테스트 환경** | 일반 Android AVD (API 28 이상, 폰·태블릿). Pleos SDK가 없으면 내장 Mock으로 자동 전환되어 모든 화면을 시연할 수 있음 |
 | **필요한 설정** | 없음. 처음 실행하면 차속 · 차 위치(Pleos FusedLocation) · 알림 권한을 묻습니다(`adb install -g` 로 미리 허용 가능). 거부해도 앱은 동작합니다. 베타는 마이크를 쓰지 않습니다. (선택) Virtual Console 연결 `adb forward tcp:8088 tcp:8088` |
 
 ```bash
-adb install -r apk/TEAM_HAEGOPA_release.apk
+adb install -r apk/WannaDoGonnaGo_HAEGOPA_release.apk
 adb shell am start -n com.haegopa.app/.MainActivity
 ```
 
@@ -432,7 +433,7 @@ HaeGoPa/
 3. Device Manager → 새 AVD: Form factor **Automotive**, 기기 **Pleos Connect v2.1.0**(2560×1440 · 160dpi), 이미지 API 34 *Pleos Connect v2.1.0 APIs*, **Default boot: Cold**, RAM 8GB(이미지 권장값)
 4. 앱 설치 후 실행 (`-g` 로 위치 · 알림 런타임 권한을 미리 허용. 빼면 첫 실행 때 묻습니다)
    ```bash
-   adb install -r -g apk/TEAM_HAEGOPA_release.apk
+   adb install -r -g apk/WannaDoGonnaGo_HAEGOPA_release.apk
    adb shell am start -n com.haegopa.app/.MainActivity
    ```
    하단 Pleos 독에 해고파 아이콘이 생기고, 앱은 차량 패널 오른쪽 메인 영역(순정 내비와 같은 자리)에 열립니다.
